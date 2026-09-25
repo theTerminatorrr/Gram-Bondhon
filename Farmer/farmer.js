@@ -369,6 +369,7 @@
       (name === 'project' && el.dataset.nav === 'projects')));
     $('#main').innerHTML = view(a, b);
     $('#rail').classList.remove('is-open');
+    const bd = $('#railBackdrop'); if (bd) bd.classList.remove('is-on');
     window.scrollTo(0, 0);
     if (view.after) view.after(a, b);
   }
@@ -380,6 +381,9 @@
   }[s] || s)}</span>`;
 
   /* ----------------------------------------------------------- dashboard */
+  const hideBtn = (key, label) =>
+    `<button class="wclose" data-hide="${key}" title="Hide ${esc(label)}" aria-label="Hide ${esc(label)}">✕</button>`;
+
   routes.dashboard = function () {
     const w = (S.settings && S.settings.dashboard) || DEFAULT_DASHBOARD_WIDGETS;
     const active = S.projects.filter((p) => ['funding', 'active'].includes(p.status));
@@ -404,7 +408,8 @@
         </div>
       </div>
 
-      ${w.stats ? `<dl class="cards cols-4" style="margin-bottom:18px">
+      ${w.stats ? `<div class="widgethead"><span>Summary numbers</span>${hideBtn('stats', 'summary numbers')}</div>
+      <dl class="cards cols-4" style="margin-bottom:18px">
         <div class="stat stat--green"><dt>Funds raised</dt><dd>${taka(raised)}</dd><small>of ${taka(goal)} requested</small></div>
         <div class="stat"><dt>Wallet balance</dt><dd>${taka(S.wallet.balance)}</dd><small>ready to withdraw</small></div>
         <div class="stat"><dt>Marketplace sales</dt><dd>${taka(sales)}</dd><small>${S.orders.length} orders</small></div>
@@ -413,7 +418,8 @@
 
       ${(w.projects || w.updates) ? `<div class="cards cols-2">
         ${w.projects ? `<section class="box">
-          <div class="box__head"><h3>Projects that need you</h3><a class="link" href="#/projects">See all</a></div>
+          <div class="box__head"><h3>Projects that need you</h3>
+            <span class="row" style="gap:10px"><a class="link" href="#/projects">See all</a>${hideBtn('projects', 'projects that need you')}</span></div>
           ${active.length ? active.map((p) => `
             <a class="pcard" href="#/project/${p.id}" style="margin-bottom:10px">
               <div class="pcard__body">
@@ -431,7 +437,7 @@
         </section>` : ''}
 
         ${w.updates ? `<section class="box">
-          <div class="box__head"><h3>Latest field updates</h3></div>
+          <div class="box__head"><h3>Latest field updates</h3>${hideBtn('updates', 'latest field updates')}</div>
           ${latest.length ? `<ul class="tl">${latest.map((u) => `
             <li><time>${nice(u.at)} · ${esc(u.project)}</time>
               <h5>${esc(u.title)}</h5><p>${esc(u.note)}</p>
@@ -442,7 +448,8 @@
       </div>` : ''}
 
       ${w.money ? `<section class="box" style="margin-top:16px">
-        <div class="box__head"><h3>Money in and out</h3><a class="link" href="#/wallet">Open wallet</a></div>
+        <div class="box__head"><h3>Money in and out</h3>
+          <span class="row" style="gap:10px"><a class="link" href="#/wallet">Open wallet</a>${hideBtn('money', 'money in and out')}</span></div>
         ${txTable(S.wallet.tx.slice(0, 4))}
       </section>` : ''}
 
@@ -454,6 +461,12 @@
     const open = () => customizeDashboardModal();
     const b1 = $('#dashCustomize'); if (b1) b1.addEventListener('click', open);
     const b2 = $('#dashCustomizeEmpty'); if (b2) b2.addEventListener('click', open);
+    $$('[data-hide]').forEach((b) => b.addEventListener('click', () => {
+      S.settings.dashboard[b.dataset.hide] = false;
+      save();
+      toast('Hidden. Bring it back anytime from Customize.');
+      route();
+    }));
   };
 
   function customizeDashboardModal() {
@@ -1324,7 +1337,14 @@
     bindAuth();
     S = load();
 
-    $('#menuBtn').addEventListener('click', () => $('#rail').classList.toggle('is-open'));
+    const railToggle = (open) => {
+      const rail = $('#rail'), bd = $('#railBackdrop');
+      const willOpen = open === undefined ? !rail.classList.contains('is-open') : open;
+      rail.classList.toggle('is-open', willOpen);
+      bd.classList.toggle('is-on', willOpen);
+    };
+    $('#menuBtn').addEventListener('click', () => railToggle());
+    $('#railBackdrop').addEventListener('click', () => railToggle(false));
     $('#bellBtn').addEventListener('click', () => { $('#notifPanel').hidden = !$('#notifPanel').hidden; });
     $('#notifClose').addEventListener('click', () => { $('#notifPanel').hidden = true; });
     $('#notifClear').addEventListener('click', () => {
@@ -1340,7 +1360,7 @@
     $('#modalClose').addEventListener('click', closeModal);
     $('#modal').addEventListener('click', (e) => { if (e.target.id === 'modal') closeModal(); });
     document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape') { closeModal(); $('#notifPanel').hidden = true; }
+      if (e.key === 'Escape') { closeModal(); $('#notifPanel').hidden = true; railToggle(false); }
     });
     window.addEventListener('hashchange', () => { if (S) route(); });
 
