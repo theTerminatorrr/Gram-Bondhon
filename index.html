@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Grambondhon</title>
+    <meta name="description"
+        content="Grambondhon: a smart rural investment platform. Continue as a farmer to list and fund your field, or as staff to manage approvals and payouts.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,600;12..96,700&family=Hind+Siliguri:wght@400;500;600;700&display=swap"
+        rel="stylesheet">
+    <style>
+        :root {
+            --paper: #F4F6F1;
+            --surface: #FFFFFF;
+            --surface-2: #EDF1EA;
+            --ink: #16241C;
+            --ink-2: #4E6154;
+            --ink-3: #7C8E82;
+            --line: #DCE4D8;
+            --green-900: #0F3722;
+            --green-700: #1B6B3A;
+            --green-500: #2F8B4E;
+            --green-100: #DCEFE0;
+            --gold: #C8881A;
+            --gold-100: #FBEED2;
+            --sky: #2C6E8F;
+            --sky-100: #DCEBF3;
+            --radius: 16px;
+            --radius-sm: 10px;
+            --shadow: 0 1px 2px rgba(15, 55, 34, .06), 0 20px 40px -24px rgba(15, 55, 34, .35);
+            --font-ui: "Hind Siliguri", "Noto Sans Bengali", system-ui, sans-serif;
+            --font-display: "Bricolage Grotesque", "Hind Siliguri", system-ui, sans-serif;
+        }
+
+        @media (prefers-color-scheme: dark) {
+            :root:not([data-theme="light"]) {
+                --paper: #0E1712;
+                --surface: #15211A;
+                --surface-2: #1C2B22;
+                --ink: #E8F0E9;
+                --ink-2: #AFC0B4;
+                --ink-3: #88998D;
+                --line: #27382D;
+                --green-100: #1C3C28;
+                --gold-100: #3A2E14;
+                --sky-100: #16303D;
+                --green-700: #4FB073;
+            }
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            background: var(--paper);
+            color: var(--ink);
+            font-family: var(--font-ui);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .page {
+            width: 100%;
+            max-width: 920px;
+            padding: 64px 24px 48px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            text-align: center;
+        }
+
+        .brand {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 40px;
+        }
+
+        .brand__name {
+            font-family: var(--font-display);
+            font-weight: 600;
+            font-size: 18px;
+            letter-spacing: -0.01em;
+        }
+
+        h1 {
+            font-family: var(--font-display);
+            font-weight: 700;
+            font-size: clamp(30px, 4.5vw, 46px);
+            line-height: 1.12;
+            letter-spacing: -0.02em;
+            margin: 0 0 14px;
+            max-width: 14ch;
+        }
+
+        .sub {
+            color: var(--ink-2);
+            font-size: 17px;
+            line-height: 1.55;
+            max-width: 46ch;
+            margin: 0 0 48px;
+        }
+
+        .sub em {
+            font-style: normal;
+            color: var(--ink-3);
+        }
+
+        .roles {
+            width: 100%;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+
+        @media (max-width: 640px) {
+            .roles {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .role {
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+            text-align: left;
+            text-decoration: none;
+            color: inherit;
+            background: var(--surface);
+            border: 1px solid var(--line);
+            border-radius: var(--radius);
+            box-shadow: var(--shadow);
+            padding: 32px 28px 28px;
+            overflow: hidden;
+            transition: transform .15s ease, border-color .15s ease;
+        }
+
+        .role:hover,
+        .role:focus-visible {
+            transform: translateY(-3px);
+            border-color: var(--role-accent, var(--green-500));
+            outline: none;
+        }
+
+        .role:focus-visible {
+            outline: 2px solid var(--role-accent, var(--green-500));
+            outline-offset: 3px;
+        }
+
+        .role--farmer {
+            --role-accent: var(--green-700);
+        }
+
+        .role--admin {
+            --role-accent: var(--sky);
+        }
+
+        .role__icon {
+            width: 46px;
+            height: 46px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: var(--role-tint, var(--green-100));
+            margin-bottom: 22px;
+        }
+
+        .role--admin .role__icon {
+            background: var(--sky-100);
+        }
+
+        .role__title {
+            font-family: var(--font-display);
+            font-weight: 600;
+            font-size: 21px;
+            margin: 0 0 6px;
+            letter-spacing: -0.01em;
+        }
+
+        .role__title span {
+            display: block;
+            font-family: var(--font-ui);
+            font-weight: 500;
+            font-size: 13.5px;
+            color: var(--ink-3);
+            margin-top: 2px;
+        }
+
+        .role__desc {
+            color: var(--ink-2);
+            font-size: 14.5px;
+            line-height: 1.55;
+            margin: 0 0 22px;
+        }
+
+        .role__list {
+            list-style: none;
+            padding: 0;
+            margin: 0 0 26px;
+            display: flex;
+            flex-direction: column;
+            gap: 9px;
+            width: 100%;
+        }
+
+        .role__list li {
+            display: flex;
+            align-items: center;
+            gap: 9px;
+            font-size: 13.5px;
+            color: var(--ink-2);
+        }
+
+        .role__list li::before {
+            content: "";
+            width: 5px;
+            height: 5px;
+            border-radius: 50%;
+            background: var(--role-accent, var(--green-500));
+            flex: none;
+        }
+
+        .role__cta {
+            margin-top: auto;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            font-weight: 600;
+            font-size: 14.5px;
+            color: var(--role-accent, var(--green-700));
+        }
+
+        .role__cta svg {
+            transition: transform .15s ease;
+        }
+
+        .role:hover .role__cta svg {
+            transform: translateX(3px);
+        }
+
+        footer {
+            margin-top: 56px;
+            color: var(--ink-3);
+            font-size: 13px;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="page">
+        <div class="brand">
+            <svg viewBox="0 0 32 32" width="26" height="26" aria-hidden="true">
+                <path d="M16 29c0-8 4-13 11-15-1 9-5 14-11 15Z" fill="#6FBF73" />
+                <path d="M16 29C16 20 12 15 5 13c1 9 5 14 11 16Z" fill="#2F8B4E" />
+                <path d="M16 29V9" stroke="#E0A32E" stroke-width="2.5" stroke-linecap="round" />
+                <circle cx="16" cy="6" r="3.2" fill="#E0A32E" />
+            </svg>
+            <span class="brand__name">Grambandhan</span>
+        </div>
+
+        <h1>Who's signing in today?</h1>
+        <p class="sub">One platform, two workspaces. Pick the one that's yours. <em>আপনি কি কৃষক নাকি অ্যাডমিন?</em></p>
+
+        <div class="roles">
+            <a class="role role--farmer" href="Farmer/farmer.html">
+                <span class="role__icon">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+                        <path d="M12 21c0-6 3-9.5 8-11-1 6.5-3.5 10-8 11Z" fill="#2F8B4E" />
+                        <path d="M12 21C12 15 9 11.5 4 10c1 6.5 3.5 10 8 11Z" fill="#6FBF73" />
+                        <path d="M12 21V6" stroke="#C8881A" stroke-width="1.8" stroke-linecap="round" />
+                    </svg>
+                </span>
+                <h2 class="role__title">Farmer<span>খামারি — list your field, get funded</span></h2>
+                <p class="role__desc">Record your harvest, track your funding, and see your payouts land.</p>
+                <ul class="role__list">
+                    <li>Land &amp; crop verification status</li>
+                    <li>Capital disbursement &amp; payout history</li>
+                    <li>Agronomist inspection log</li>
+                </ul>
+                <span class="role__cta">Continue as farmer
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                        <path d="M3 8h10M9 4l4 4-4 4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"
+                            stroke-linejoin="round" />
+                    </svg>
+                </span>
+            </a>
+
+            <a class="role role--admin" href="Admin/admin.html">
+                <span class="role__icon">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+                        <path d="M12 3l7 3v5c0 5-3 8.5-7 10-4-1.5-7-5-7-10V6l7-3Z" stroke="#2C6E8F" stroke-width="1.7"
+                            stroke-linejoin="round" />
+                    </svg>
+                </span>
+                <h2 class="role__title">Admin &amp; staff<span>compliance, approvals, escrow</span></h2>
+                <p class="role__desc">Review KYC, approve campaigns, and release escrow — every action logged.</p>
+                <ul class="role__list">
+                    <li>National ID KYC queue</li>
+                    <li>Deal approval engine</li>
+                    <li>Escrow settlement release</li>
+                </ul>
+                <span class="role__cta">Continue as staff
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                        <path d="M3 8h10M9 4l4 4-4 4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"
+                            stroke-linejoin="round" />
+                    </svg>
+                </span>
+            </a>
+        </div>
+
+        <footer>Interest-free · profit-shared · field-verified</footer>
+    </div>
+</body>
+
+</html>
