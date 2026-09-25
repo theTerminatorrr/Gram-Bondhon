@@ -1,269 +1,269 @@
 // @ts-nocheck
 (function () {
-    'use strict';
+  'use strict';
 
-    const $: any = (s: string, r: any = document) => r.querySelector(s);
-    const $$: any = (s: string, r: any = document) => Array.from(r.querySelectorAll(s));
-    const KEY = 'grambandhan.admin.v1';
-    const uid = (p: string) => p + '-' + Math.random().toString(36).slice(2, 7).toUpperCase();
-    const esc = (s: any) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) =>
-        ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-    const taka = (n: number | string) => '৳' + Number(n || 0).toLocaleString('en-IN');
-    const pct = (a: number, b: number) => (!b ? 0 : Math.min(100, Math.round((a / b) * 100)));
-    const nice = (d: any) => new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
-    const stamp = (d: any) => new Date(d).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
-    const ago = (d: any) => {
-        const m = Math.round((Date.now() - new Date(d).getTime()) / 60000);
-        return m < 60 ? m + ' min ago' : m < 1440 ? Math.round(m / 60) + ' hr ago' : Math.round(m / 1440) + ' d ago';
-    };
-    const d = (days: number) => new Date(Date.now() - days * 864e5).toISOString();
+  const $: any = (s: string, r: any = document) => r.querySelector(s);
+  const $$: any = (s: string, r: any = document) => Array.from(r.querySelectorAll(s));
+  const KEY = 'grambandhan.admin.v1';
+  const uid = (p: string) => p + '-' + Math.random().toString(36).slice(2, 7).toUpperCase();
+  const esc = (s: any) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) =>
+    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const taka = (n: number | string) => '৳' + Number(n || 0).toLocaleString('en-IN');
+  const pct = (a: number, b: number) => (!b ? 0 : Math.min(100, Math.round((a / b) * 100)));
+  const nice = (d: any) => new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+  const stamp = (d: any) => new Date(d).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+  const ago = (d: any) => {
+    const m = Math.round((Date.now() - new Date(d).getTime()) / 60000);
+    return m < 60 ? m + ' min ago' : m < 1440 ? Math.round(m / 60) + ' hr ago' : Math.round(m / 1440) + ' d ago';
+  };
+  const d = (days: number) => new Date(Date.now() - days * 864e5).toISOString();
 
-    const CAT: Record<string, string> = { Crop: '🌾', Vegetable: '🥬', Poultry: '🐓', Fisheries: '🐟', Cattle: '🐄', Handicraft: '🧺' };
+  const CAT: Record<string, string> = { Crop: '🌾', Vegetable: '🥬', Poultry: '🐓', Fisheries: '🐟', Cattle: '🐄', Handicraft: '🧺' };
 
-    /* Overview widgets an admin can turn on or off. Keys map 1:1 to the
-       sections rendered in routes.overview(). */
-    const DASHBOARD_WIDGETS = [
-        { key: 'waiting', label: '"Waiting on you" banner', hint: 'Pending approvals, KYC checks, disbursements, disputes, claims' },
-        { key: 'stats', label: 'Summary numbers', hint: 'Total funded, escrow, revenue, flagged items' },
-        { key: 'chart', label: 'Money-flow chart', hint: 'Six-month bar chart of platform throughput' },
-        { key: 'roles', label: 'User mix and district funding', hint: 'Role split and funding by district' },
-        { key: 'tx', label: 'Latest transactions', hint: 'Five most recent ledger entries' },
-        { key: 'audit', label: 'Audit log', hint: 'Most recent admin actions' }
+  /* Overview widgets an admin can turn on or off. Keys map 1:1 to the
+     sections rendered in routes.overview(). */
+  const DASHBOARD_WIDGETS = [
+    { key: 'waiting', label: '"Waiting on you" banner', hint: 'Pending approvals, KYC checks, disbursements, disputes, claims' },
+    { key: 'stats', label: 'Summary numbers', hint: 'Total funded, escrow, revenue, flagged items' },
+    { key: 'chart', label: 'Money-flow chart', hint: 'Six-month bar chart of platform throughput' },
+    { key: 'roles', label: 'User mix and district funding', hint: 'Role split and funding by district' },
+    { key: 'tx', label: 'Latest transactions', hint: 'Five most recent ledger entries' },
+    { key: 'audit', label: 'Audit log', hint: 'Most recent admin actions' }
+  ];
+  const DEFAULT_DASHBOARD_WIDGETS: Record<string, boolean> = { waiting: true, stats: true, chart: true, roles: true, tx: true, audit: true };
+
+  function toast(msg: string, bad?: boolean) {
+    const t = document.createElement('div');
+    t.className = 'toast' + (bad ? ' toast--bad' : '');
+    t.textContent = msg;
+    $('#toasts').appendChild(t);
+    setTimeout(() => t.remove(), 3200);
+  }
+
+  let S: any = null;
+  const save = () => { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) { } };
+  const load = () => {
+    try {
+      const r = localStorage.getItem(KEY);
+      if (!r) return null;
+      const parsed = JSON.parse(r);
+      if (parsed && !parsed.settings) parsed.settings = { dashboard: { ...DEFAULT_DASHBOARD_WIDGETS } };
+      if (parsed && parsed.settings && !parsed.settings.dashboard) parsed.settings.dashboard = { ...DEFAULT_DASHBOARD_WIDGETS };
+      return parsed;
+    } catch (e) { return null; }
+  };
+
+  /* Audit log — every admin decision lands here */
+  function log(action: string, target: string, note?: string) {
+    S.audit.unshift({ id: uid('LOG'), at: new Date().toISOString(), by: S.admin.id, action, target, note: note || '' });
+    if (S.audit.length > 400) S.audit.length = 400;
+  }
+  function alertMsg(text: string, sev?: string) {
+    S.alerts.unshift({ id: uid('AL'), at: new Date().toISOString(), text, sev: sev || 'low', read: false });
+    paintBell();
+  }
+
+  /* ------------------------------------------------------------ seed data */
+  function seed() {
+    const users = [
+      { id: 'USR-1001', name: 'Rahima Khatun', role: 'Farmer', phone: '01712345678', district: 'Bogura', kyc: 'verified', joined: d(320), rating: 4.8, projects: 3, flagged: false, status: 'active' },
+      { id: 'USR-1002', name: 'Muhutasim Bin Sadik', role: 'Investor', phone: '01822334455', district: 'Dhaka', kyc: 'verified', joined: d(260), rating: 4.9, invested: 385000, flagged: false, status: 'active' },
+      { id: 'USR-1003', name: 'Shamia Akter Tasfi', role: 'Investor', phone: '01911223344', district: 'Dhaka', kyc: 'verified', joined: d(240), rating: 4.7, invested: 210000, flagged: false, status: 'active' },
+      { id: 'USR-1004', name: 'Nusrat Jahan', role: 'Field agent', phone: '01677889900', district: 'Bogura', kyc: 'verified', joined: d(300), rating: 4.9, visits: 62, flagged: false, status: 'active' },
+      { id: 'USR-1005', name: 'Karimul Islam Shezan', role: 'Farmer', phone: '01711111111', district: 'Sirajganj', kyc: 'pending', joined: d(4), rating: 0, projects: 1, flagged: false, status: 'active' },
+      { id: 'USR-1006', name: 'Fariha Tithy', role: 'Artisan', phone: '01533445566', district: 'Rangpur', kyc: 'pending', joined: d(2), rating: 0, projects: 1, flagged: false, status: 'active' },
+      { id: 'USR-1007', name: 'Jasim Uddin', role: 'Farmer', phone: '01399887766', district: 'Jamalpur', kyc: 'rejected', joined: d(11), rating: 0, projects: 2, flagged: true, status: 'suspended' },
+      { id: 'USR-1008', name: 'Toufiq Imroz Khan', role: 'Buyer', phone: '01744556677', district: 'Dhaka', kyc: 'verified', joined: d(90), rating: 4.5, flagged: false, status: 'active' }
     ];
-    const DEFAULT_DASHBOARD_WIDGETS: Record<string, boolean> = { waiting: true, stats: true, chart: true, roles: true, tx: true, audit: true };
 
-    function toast(msg: string, bad?: boolean) {
-        const t = document.createElement('div');
-        t.className = 'toast' + (bad ? ' toast--bad' : '');
-        t.textContent = msg;
-        $('#toasts').appendChild(t);
-        setTimeout(() => t.remove(), 3200);
-    }
+    const projects = [
+      { id: 'PRJ-2401', title: 'Aman Rice Cultivation — 2 acres', owner: 'Rahima Khatun', ownerId: 'USR-1001', category: 'Crop', district: 'Bogura', goal: 145000, raised: 145000, months: 5, status: 'active', risk: 25, riskLevel: 'low', createdAt: d(46), docs: ['land-deed.pdf'], updates: 3, insured: true, disbursed: 142100, escrow: 0 },
+      { id: 'PRJ-2402', title: 'Organic Tomato Tunnel Farm', owner: 'Rahima Khatun', ownerId: 'USR-1001', category: 'Vegetable', district: 'Bogura', goal: 90000, raised: 32800, months: 4, status: 'funding', risk: 31, riskLevel: 'low', createdAt: d(12), docs: [], updates: 0, insured: false, disbursed: 0, escrow: 32800 },
+      { id: 'PRJ-2403', title: 'Mango Orchard Expansion', owner: 'Rahima Khatun', ownerId: 'USR-1001', category: 'Crop', district: 'Bogura', goal: 60000, raised: 0, months: 12, status: 'pending', risk: 44, riskLevel: 'medium', createdAt: d(2), docs: ['orchard-photo.jpg'], updates: 0, insured: false, disbursed: 0, escrow: 0 },
+      { id: 'PRJ-2404', title: 'Boro Rice on 2 acres', owner: 'Karimul Islam Shezan', ownerId: 'USR-1005', category: 'Crop', district: 'Sirajganj', goal: 120000, raised: 0, months: 5, status: 'pending', risk: 58, riskLevel: 'medium', createdAt: d(1), docs: [], updates: 0, insured: false, disbursed: 0, escrow: 0 },
+      { id: 'PRJ-2405', title: 'Nakshi Kantha Womens Collective', owner: 'Fariha Tithy', ownerId: 'USR-1006', category: 'Handicraft', district: 'Rangpur', goal: 45000, raised: 0, months: 6, status: 'pending', risk: 22, riskLevel: 'low', createdAt: d(1), docs: ['group-registration.pdf'], updates: 0, insured: false, disbursed: 0, escrow: 0 },
+      { id: 'PRJ-2406', title: 'Meghna River Gold Prawn', owner: 'Jasim Uddin', ownerId: 'USR-1007', category: 'Fisheries', district: 'Jamalpur', goal: 480000, raised: 0, months: 8, status: 'pending', risk: 81, riskLevel: 'high', createdAt: d(3), docs: [], updates: 0, insured: false, disbursed: 0, escrow: 0 },
+      { id: 'PRJ-2407', title: 'Layer Poultry Shed — 800 birds', owner: 'Rahima Khatun', ownerId: 'USR-1001', category: 'Poultry', district: 'Bogura', goal: 210000, raised: 210000, months: 6, status: 'active', risk: 38, riskLevel: 'medium', createdAt: d(70), docs: ['shed-plan.pdf'], updates: 7, insured: true, disbursed: 205800, escrow: 0 },
+      { id: 'PRJ-2408', title: 'Bogura Premium Red Chilli', owner: 'Rahima Khatun', ownerId: 'USR-1001', category: 'Crop', district: 'Bogura', goal: 75000, raised: 75000, months: 5, status: 'completed', risk: 27, riskLevel: 'low', createdAt: d(190), docs: ['land-deed.pdf'], updates: 9, insured: true, disbursed: 73500, escrow: 0 },
+      { id: 'PRJ-2409', title: 'Cattle Fattening — 6 head', owner: 'Jasim Uddin', ownerId: 'USR-1007', category: 'Cattle', district: 'Jamalpur', goal: 300000, raised: 0, months: 4, status: 'rejected', risk: 76, riskLevel: 'high', createdAt: d(9), docs: [], updates: 0, insured: false, disbursed: 0, escrow: 0, note: 'No ownership document and the budget did not match the stated herd size.' }
+    ];
 
-    let S: any = null;
-    const save = () => { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) { } };
-    const load = () => {
-        try {
-            const r = localStorage.getItem(KEY);
-            if (!r) return null;
-            const parsed = JSON.parse(r);
-            if (parsed && !parsed.settings) parsed.settings = { dashboard: { ...DEFAULT_DASHBOARD_WIDGETS } };
-            if (parsed && parsed.settings && !parsed.settings.dashboard) parsed.settings.dashboard = { ...DEFAULT_DASHBOARD_WIDGETS };
-            return parsed;
-        } catch (e) { return null; }
+    const tx = [
+      { id: 'TXN-90121', at: d(0.2), type: 'investment', from: 'Muhutasim Bin Sadik', to: 'Escrow — PRJ-2402', method: 'bKash', amount: 20000, fee: 400, status: 'complete', project: 'PRJ-2402' },
+      { id: 'TXN-90118', at: d(1), type: 'investment', from: 'Shamia Akter Tasfi', to: 'Escrow — PRJ-2402', method: 'Nagad', amount: 12800, fee: 256, status: 'complete', project: 'PRJ-2402' },
+      { id: 'TXN-90114', at: d(2), type: 'withdrawal', from: 'Rahima Khatun', to: 'bKash 017****891', method: 'bKash', amount: 5000, fee: 0, status: 'complete', project: '' },
+      { id: 'TXN-90110', at: d(3), type: 'sale', from: 'Toufiq Imroz Khan', to: 'Rahima Khatun', method: 'Nagad', amount: 1800, fee: 90, status: 'complete', project: '' },
+      { id: 'TXN-90104', at: d(4), type: 'disbursement', from: 'Escrow — PRJ-2407', to: 'Rahima Khatun', method: 'Bank transfer', amount: 205800, fee: 4200, status: 'complete', project: 'PRJ-2407' },
+      { id: 'TXN-90099', at: d(5), type: 'premium', from: 'Rahima Khatun', to: 'Insurance pool', method: 'Wallet', amount: 5250, fee: 0, status: 'complete', project: 'PRJ-2407' },
+      { id: 'TXN-90090', at: d(6), type: 'investment', from: 'Muhutasim Bin Sadik', to: 'Escrow — PRJ-2407', method: 'Bank transfer', amount: 120000, fee: 2400, status: 'complete', project: 'PRJ-2407' },
+      { id: 'TXN-90081', at: d(8), type: 'payout', from: 'Escrow — PRJ-2408', to: 'Muhutasim Bin Sadik', method: 'bKash', amount: 42300, fee: 0, status: 'complete', project: 'PRJ-2408' },
+      { id: 'TXN-90077', at: d(9), type: 'withdrawal', from: 'Jasim Uddin', to: 'bKash 013****766', method: 'bKash', amount: 48000, fee: 0, status: 'held', project: '' },
+      { id: 'TXN-90070', at: d(12), type: 'investment', from: 'Shamia Akter Tasfi', to: 'Escrow — PRJ-2401', method: 'bKash', amount: 50000, fee: 1000, status: 'complete', project: 'PRJ-2401' },
+      { id: 'TXN-90066', at: d(14), type: 'refund', from: 'Escrow — PRJ-2409', to: 'Shamia Akter Tasfi', method: 'bKash', amount: 15000, fee: 0, status: 'complete', project: 'PRJ-2409' },
+      { id: 'TXN-90061', at: d(18), type: 'claim', from: 'Insurance pool', to: 'Rahima Khatun', method: 'Bank transfer', amount: 18000, fee: 0, status: 'complete', project: 'PRJ-2408' }
+    ];
+
+    const disbursements = [
+      { id: 'DSB-4401', project: 'PRJ-2402', title: 'Organic Tomato Tunnel Farm', farmer: 'Rahima Khatun', amount: 32800, requested: d(1), agentVerified: true, status: 'pending' },
+      { id: 'DSB-4402', project: 'PRJ-2404', title: 'Boro Rice on 2 acres', farmer: 'Karimul Islam Shezan', amount: 120000, requested: d(0.5), agentVerified: false, status: 'pending' }
+    ];
+
+    const alerts = [
+      { id: uid('AL'), at: d(0.3), text: 'Jasim Uddin attempted a ৳48,000 withdrawal 6 minutes after funds landed. Payout held.', sev: 'high', read: false },
+      { id: uid('AL'), at: d(1), text: 'PRJ-2406 requests ৳4,80,000 from an unverified account with no documents.', sev: 'high', read: false },
+      { id: uid('AL'), at: d(2), text: 'Three accounts registered from the same device in Jamalpur within an hour.', sev: 'medium', read: false },
+      { id: uid('AL'), at: d(4), text: 'PRJ-2402 has had no progress update for 12 days.', sev: 'low', read: true }
+    ];
+
+    const disputes = [
+      { id: 'DSP-301', at: d(2), raisedBy: 'Shamia Akter Tasfi', against: 'Jasim Uddin', project: 'PRJ-2409', subject: 'Funds taken, no progress shown', detail: 'Invested ৳15,000 in the cattle project. No update in five weeks and the farmer does not answer calls.', status: 'open' },
+      { id: 'DSP-302', at: d(6), raisedBy: 'Toufiq Imroz Khan', against: 'Rahima Khatun', project: '', subject: 'Marketplace order arrived short', detail: 'Ordered 3 packs of Chinigura rice, received 2.', status: 'open' },
+      { id: 'DSP-300', at: d(20), raisedBy: 'Muhutasim Bin Sadik', against: 'Platform', project: 'PRJ-2408', subject: 'Profit split calculation query', detail: 'Asked how the 4.4% return was computed.', status: 'resolved', resolution: 'Shared the per-investor breakdown; investor satisfied.' }
+    ];
+
+    const claims = [
+      { id: 'CLM-201', at: d(3), project: 'PRJ-2407', title: 'Layer Poultry Shed — 800 birds', farmer: 'Rahima Khatun', reason: 'Pest or disease outbreak', amount: 64000, agentVerified: true, status: 'pending' },
+      { id: 'CLM-202', at: d(1), project: 'PRJ-2401', title: 'Aman Rice Cultivation — 2 acres', farmer: 'Rahima Khatun', reason: 'Flood damage', amount: 40000, agentVerified: false, status: 'pending' },
+      { id: 'CLM-199', at: d(18), project: 'PRJ-2408', title: 'Bogura Premium Red Chilli', farmer: 'Rahima Khatun', reason: 'Crop failure', amount: 18000, agentVerified: true, status: 'paid' }
+    ];
+
+    const products = [
+      { id: 'PRD-701', name: 'Premium Chinigura Rice', seller: 'Rahima Khatun', price: 600, stock: 40, sold: 26, rating: 4.8, status: 'live', reports: 0 },
+      { id: 'PRD-702', name: 'Farm Fresh Brown Eggs', seller: 'Rahima Khatun', price: 240, stock: 18, sold: 54, rating: 4.6, status: 'live', reports: 0 },
+      { id: 'PRD-703', name: 'Handwoven Bamboo Basket', seller: 'Fariha Tithy', price: 350, stock: 12, sold: 3, rating: 0, status: 'live', reports: 0 },
+      { id: 'PRD-704', name: 'Imported Pesticide — bulk', seller: 'Jasim Uddin', price: 2400, stock: 60, sold: 0, rating: 0, status: 'live', reports: 3 }
+    ];
+
+    return {
+      admin: { id: 'ADM-1042', name: 'System Administrator' },
+      settings: { dashboard: { ...DEFAULT_DASHBOARD_WIDGETS } },
+      users, projects, tx, disbursements, alerts, disputes, claims, products,
+      audit: [
+        { id: uid('LOG'), at: d(9), by: 'ADM-1042', action: 'Rejected project', target: 'PRJ-2409', note: 'No ownership document.' },
+        { id: uid('LOG'), at: d(11), by: 'ADM-1042', action: 'Suspended user', target: 'USR-1007', note: 'Repeated document mismatch.' },
+        { id: uid('LOG'), at: d(18), by: 'ADM-1042', action: 'Approved claim', target: 'CLM-199', note: 'Field report confirmed the loss.' }
+      ]
     };
+  }
 
-    /* Audit log — every admin decision lands here */
-    function log(action: string, target: string, note?: string) {
-        S.audit.unshift({ id: uid('LOG'), at: new Date().toISOString(), by: S.admin.id, action, target, note: note || '' });
-        if (S.audit.length > 400) S.audit.length = 400;
-    }
-    function alertMsg(text: string, sev?: string) {
-        S.alerts.unshift({ id: uid('AL'), at: new Date().toISOString(), text, sev: sev || 'low', read: false });
-        paintBell();
-    }
+  /* ---------------------------------------------------------------- login */
+  function setError(id, msg) {
+    const el = $(`.field__error[data-for="${id}"]`);
+    if (el) { el.textContent = msg; el.classList.add('is-on'); }
+    const i = $('#' + id);
+    if (i && i.closest('.field')) i.closest('.field').classList.add('is-bad');
+  }
+  function clearErrors(root) {
+    $$('.field__error', root || document).forEach((e) => { e.classList.remove('is-on'); e.textContent = ''; });
+    $$('.field.is-bad', root || document).forEach((f) => f.classList.remove('is-bad'));
+  }
 
-    /* ------------------------------------------------------------ seed data */
-    function seed() {
-        const users = [
-            { id: 'USR-1001', name: 'Rahima Khatun', role: 'Farmer', phone: '01712345678', district: 'Bogura', kyc: 'verified', joined: d(320), rating: 4.8, projects: 3, flagged: false, status: 'active' },
-            { id: 'USR-1002', name: 'Muhutasim Bin Sadik', role: 'Investor', phone: '01822334455', district: 'Dhaka', kyc: 'verified', joined: d(260), rating: 4.9, invested: 385000, flagged: false, status: 'active' },
-            { id: 'USR-1003', name: 'Shamia Akter Tasfi', role: 'Investor', phone: '01911223344', district: 'Dhaka', kyc: 'verified', joined: d(240), rating: 4.7, invested: 210000, flagged: false, status: 'active' },
-            { id: 'USR-1004', name: 'Nusrat Jahan', role: 'Field agent', phone: '01677889900', district: 'Bogura', kyc: 'verified', joined: d(300), rating: 4.9, visits: 62, flagged: false, status: 'active' },
-            { id: 'USR-1005', name: 'Karimul Islam Shezan', role: 'Farmer', phone: '01711111111', district: 'Sirajganj', kyc: 'pending', joined: d(4), rating: 0, projects: 1, flagged: false, status: 'active' },
-            { id: 'USR-1006', name: 'Fariha Tithy', role: 'Artisan', phone: '01533445566', district: 'Rangpur', kyc: 'pending', joined: d(2), rating: 0, projects: 1, flagged: false, status: 'active' },
-            { id: 'USR-1007', name: 'Jasim Uddin', role: 'Farmer', phone: '01399887766', district: 'Jamalpur', kyc: 'rejected', joined: d(11), rating: 0, projects: 2, flagged: true, status: 'suspended' },
-            { id: 'USR-1008', name: 'Toufiq Imroz Khan', role: 'Buyer', phone: '01744556677', district: 'Dhaka', kyc: 'verified', joined: d(90), rating: 4.5, flagged: false, status: 'active' }
-        ];
+  function bindLogin() {
+    $('#loginForm').addEventListener('submit', (e) => {
+      e.preventDefault();
+      clearErrors();
+      let ok = true;
+      if (!/^ADM-\d{4}$/i.test($('#adId').value.trim())) { setError('adId', 'Admin IDs look like ADM-1042.'); ok = false; }
+      if ($('#adPass').value.length < 6) { setError('adPass', 'Password must be at least 6 characters.'); ok = false; }
+      if ($('#adOtp').value.trim() !== '482913') { setError('adOtp', 'That one-time code is wrong or expired.'); ok = false; }
+      if (!ok) return;
+      if (!S) { S = seed(); save(); }
+      enterApp();
+    });
+  }
 
-        const projects = [
-            { id: 'PRJ-2401', title: 'Aman Rice Cultivation — 2 acres', owner: 'Rahima Khatun', ownerId: 'USR-1001', category: 'Crop', district: 'Bogura', goal: 145000, raised: 145000, months: 5, status: 'active', risk: 25, riskLevel: 'low', createdAt: d(46), docs: ['land-deed.pdf'], updates: 3, insured: true, disbursed: 142100, escrow: 0 },
-            { id: 'PRJ-2402', title: 'Organic Tomato Tunnel Farm', owner: 'Rahima Khatun', ownerId: 'USR-1001', category: 'Vegetable', district: 'Bogura', goal: 90000, raised: 32800, months: 4, status: 'funding', risk: 31, riskLevel: 'low', createdAt: d(12), docs: [], updates: 0, insured: false, disbursed: 0, escrow: 32800 },
-            { id: 'PRJ-2403', title: 'Mango Orchard Expansion', owner: 'Rahima Khatun', ownerId: 'USR-1001', category: 'Crop', district: 'Bogura', goal: 60000, raised: 0, months: 12, status: 'pending', risk: 44, riskLevel: 'medium', createdAt: d(2), docs: ['orchard-photo.jpg'], updates: 0, insured: false, disbursed: 0, escrow: 0 },
-            { id: 'PRJ-2404', title: 'Boro Rice on 2 acres', owner: 'Karimul Islam Shezan', ownerId: 'USR-1005', category: 'Crop', district: 'Sirajganj', goal: 120000, raised: 0, months: 5, status: 'pending', risk: 58, riskLevel: 'medium', createdAt: d(1), docs: [], updates: 0, insured: false, disbursed: 0, escrow: 0 },
-            { id: 'PRJ-2405', title: 'Nakshi Kantha Womens Collective', owner: 'Fariha Tithy', ownerId: 'USR-1006', category: 'Handicraft', district: 'Rangpur', goal: 45000, raised: 0, months: 6, status: 'pending', risk: 22, riskLevel: 'low', createdAt: d(1), docs: ['group-registration.pdf'], updates: 0, insured: false, disbursed: 0, escrow: 0 },
-            { id: 'PRJ-2406', title: 'Meghna River Gold Prawn', owner: 'Jasim Uddin', ownerId: 'USR-1007', category: 'Fisheries', district: 'Jamalpur', goal: 480000, raised: 0, months: 8, status: 'pending', risk: 81, riskLevel: 'high', createdAt: d(3), docs: [], updates: 0, insured: false, disbursed: 0, escrow: 0 },
-            { id: 'PRJ-2407', title: 'Layer Poultry Shed — 800 birds', owner: 'Rahima Khatun', ownerId: 'USR-1001', category: 'Poultry', district: 'Bogura', goal: 210000, raised: 210000, months: 6, status: 'active', risk: 38, riskLevel: 'medium', createdAt: d(70), docs: ['shed-plan.pdf'], updates: 7, insured: true, disbursed: 205800, escrow: 0 },
-            { id: 'PRJ-2408', title: 'Bogura Premium Red Chilli', owner: 'Rahima Khatun', ownerId: 'USR-1001', category: 'Crop', district: 'Bogura', goal: 75000, raised: 75000, months: 5, status: 'completed', risk: 27, riskLevel: 'low', createdAt: d(190), docs: ['land-deed.pdf'], updates: 9, insured: true, disbursed: 73500, escrow: 0 },
-            { id: 'PRJ-2409', title: 'Cattle Fattening — 6 head', owner: 'Jasim Uddin', ownerId: 'USR-1007', category: 'Cattle', district: 'Jamalpur', goal: 300000, raised: 0, months: 4, status: 'rejected', risk: 76, riskLevel: 'high', createdAt: d(9), docs: [], updates: 0, insured: false, disbursed: 0, escrow: 0, note: 'No ownership document and the budget did not match the stated herd size.' }
-        ];
+  function enterApp() {
+    $('#authScreen').classList.add('is-hidden');
+    $('#app').classList.remove('is-hidden');
+    $('#topName').textContent = S.admin.name;
+    $('#topMeta').textContent = S.admin.id + ' · full access · all actions logged';
+    paintBell(); paintBadges();
+    if (!location.hash.startsWith('#/')) location.hash = '#/overview';
+    route();
+  }
 
-        const tx = [
-            { id: 'TXN-90121', at: d(0.2), type: 'investment', from: 'Muhutasim Bin Sadik', to: 'Escrow — PRJ-2402', method: 'bKash', amount: 20000, fee: 400, status: 'complete', project: 'PRJ-2402' },
-            { id: 'TXN-90118', at: d(1), type: 'investment', from: 'Shamia Akter Tasfi', to: 'Escrow — PRJ-2402', method: 'Nagad', amount: 12800, fee: 256, status: 'complete', project: 'PRJ-2402' },
-            { id: 'TXN-90114', at: d(2), type: 'withdrawal', from: 'Rahima Khatun', to: 'bKash 017****891', method: 'bKash', amount: 5000, fee: 0, status: 'complete', project: '' },
-            { id: 'TXN-90110', at: d(3), type: 'sale', from: 'Toufiq Imroz Khan', to: 'Rahima Khatun', method: 'Nagad', amount: 1800, fee: 90, status: 'complete', project: '' },
-            { id: 'TXN-90104', at: d(4), type: 'disbursement', from: 'Escrow — PRJ-2407', to: 'Rahima Khatun', method: 'Bank transfer', amount: 205800, fee: 4200, status: 'complete', project: 'PRJ-2407' },
-            { id: 'TXN-90099', at: d(5), type: 'premium', from: 'Rahima Khatun', to: 'Insurance pool', method: 'Wallet', amount: 5250, fee: 0, status: 'complete', project: 'PRJ-2407' },
-            { id: 'TXN-90090', at: d(6), type: 'investment', from: 'Muhutasim Bin Sadik', to: 'Escrow — PRJ-2407', method: 'Bank transfer', amount: 120000, fee: 2400, status: 'complete', project: 'PRJ-2407' },
-            { id: 'TXN-90081', at: d(8), type: 'payout', from: 'Escrow — PRJ-2408', to: 'Muhutasim Bin Sadik', method: 'bKash', amount: 42300, fee: 0, status: 'complete', project: 'PRJ-2408' },
-            { id: 'TXN-90077', at: d(9), type: 'withdrawal', from: 'Jasim Uddin', to: 'bKash 013****766', method: 'bKash', amount: 48000, fee: 0, status: 'held', project: '' },
-            { id: 'TXN-90070', at: d(12), type: 'investment', from: 'Shamia Akter Tasfi', to: 'Escrow — PRJ-2401', method: 'bKash', amount: 50000, fee: 1000, status: 'complete', project: 'PRJ-2401' },
-            { id: 'TXN-90066', at: d(14), type: 'refund', from: 'Escrow — PRJ-2409', to: 'Shamia Akter Tasfi', method: 'bKash', amount: 15000, fee: 0, status: 'complete', project: 'PRJ-2409' },
-            { id: 'TXN-90061', at: d(18), type: 'claim', from: 'Insurance pool', to: 'Rahima Khatun', method: 'Bank transfer', amount: 18000, fee: 0, status: 'complete', project: 'PRJ-2408' }
-        ];
-
-        const disbursements = [
-            { id: 'DSB-4401', project: 'PRJ-2402', title: 'Organic Tomato Tunnel Farm', farmer: 'Rahima Khatun', amount: 32800, requested: d(1), agentVerified: true, status: 'pending' },
-            { id: 'DSB-4402', project: 'PRJ-2404', title: 'Boro Rice on 2 acres', farmer: 'Karimul Islam Shezan', amount: 120000, requested: d(0.5), agentVerified: false, status: 'pending' }
-        ];
-
-        const alerts = [
-            { id: uid('AL'), at: d(0.3), text: 'Jasim Uddin attempted a ৳48,000 withdrawal 6 minutes after funds landed. Payout held.', sev: 'high', read: false },
-            { id: uid('AL'), at: d(1), text: 'PRJ-2406 requests ৳4,80,000 from an unverified account with no documents.', sev: 'high', read: false },
-            { id: uid('AL'), at: d(2), text: 'Three accounts registered from the same device in Jamalpur within an hour.', sev: 'medium', read: false },
-            { id: uid('AL'), at: d(4), text: 'PRJ-2402 has had no progress update for 12 days.', sev: 'low', read: true }
-        ];
-
-        const disputes = [
-            { id: 'DSP-301', at: d(2), raisedBy: 'Shamia Akter Tasfi', against: 'Jasim Uddin', project: 'PRJ-2409', subject: 'Funds taken, no progress shown', detail: 'Invested ৳15,000 in the cattle project. No update in five weeks and the farmer does not answer calls.', status: 'open' },
-            { id: 'DSP-302', at: d(6), raisedBy: 'Toufiq Imroz Khan', against: 'Rahima Khatun', project: '', subject: 'Marketplace order arrived short', detail: 'Ordered 3 packs of Chinigura rice, received 2.', status: 'open' },
-            { id: 'DSP-300', at: d(20), raisedBy: 'Muhutasim Bin Sadik', against: 'Platform', project: 'PRJ-2408', subject: 'Profit split calculation query', detail: 'Asked how the 4.4% return was computed.', status: 'resolved', resolution: 'Shared the per-investor breakdown; investor satisfied.' }
-        ];
-
-        const claims = [
-            { id: 'CLM-201', at: d(3), project: 'PRJ-2407', title: 'Layer Poultry Shed — 800 birds', farmer: 'Rahima Khatun', reason: 'Pest or disease outbreak', amount: 64000, agentVerified: true, status: 'pending' },
-            { id: 'CLM-202', at: d(1), project: 'PRJ-2401', title: 'Aman Rice Cultivation — 2 acres', farmer: 'Rahima Khatun', reason: 'Flood damage', amount: 40000, agentVerified: false, status: 'pending' },
-            { id: 'CLM-199', at: d(18), project: 'PRJ-2408', title: 'Bogura Premium Red Chilli', farmer: 'Rahima Khatun', reason: 'Crop failure', amount: 18000, agentVerified: true, status: 'paid' }
-        ];
-
-        const products = [
-            { id: 'PRD-701', name: 'Premium Chinigura Rice', seller: 'Rahima Khatun', price: 600, stock: 40, sold: 26, rating: 4.8, status: 'live', reports: 0 },
-            { id: 'PRD-702', name: 'Farm Fresh Brown Eggs', seller: 'Rahima Khatun', price: 240, stock: 18, sold: 54, rating: 4.6, status: 'live', reports: 0 },
-            { id: 'PRD-703', name: 'Handwoven Bamboo Basket', seller: 'Fariha Tithy', price: 350, stock: 12, sold: 3, rating: 0, status: 'live', reports: 0 },
-            { id: 'PRD-704', name: 'Imported Pesticide — bulk', seller: 'Jasim Uddin', price: 2400, stock: 60, sold: 0, rating: 0, status: 'live', reports: 3 }
-        ];
-
-        return {
-            admin: { id: 'ADM-1042', name: 'System Administrator' },
-            settings: { dashboard: { ...DEFAULT_DASHBOARD_WIDGETS } },
-            users, projects, tx, disbursements, alerts, disputes, claims, products,
-            audit: [
-                { id: uid('LOG'), at: d(9), by: 'ADM-1042', action: 'Rejected project', target: 'PRJ-2409', note: 'No ownership document.' },
-                { id: uid('LOG'), at: d(11), by: 'ADM-1042', action: 'Suspended user', target: 'USR-1007', note: 'Repeated document mismatch.' },
-                { id: uid('LOG'), at: d(18), by: 'ADM-1042', action: 'Approved claim', target: 'CLM-199', note: 'Field report confirmed the loss.' }
-            ]
-        };
-    }
-
-    /* ---------------------------------------------------------------- login */
-    function setError(id, msg) {
-        const el = $(`.field__error[data-for="${id}"]`);
-        if (el) { el.textContent = msg; el.classList.add('is-on'); }
-        const i = $('#' + id);
-        if (i && i.closest('.field')) i.closest('.field').classList.add('is-bad');
-    }
-    function clearErrors(root) {
-        $$('.field__error', root || document).forEach((e) => { e.classList.remove('is-on'); e.textContent = ''; });
-        $$('.field.is-bad', root || document).forEach((f) => f.classList.remove('is-bad'));
-    }
-
-    function bindLogin() {
-        $('#loginForm').addEventListener('submit', (e) => {
-            e.preventDefault();
-            clearErrors();
-            let ok = true;
-            if (!/^ADM-\d{4}$/i.test($('#adId').value.trim())) { setError('adId', 'Admin IDs look like ADM-1042.'); ok = false; }
-            if ($('#adPass').value.length < 6) { setError('adPass', 'Password must be at least 6 characters.'); ok = false; }
-            if ($('#adOtp').value.trim() !== '482913') { setError('adOtp', 'That one-time code is wrong or expired.'); ok = false; }
-            if (!ok) return;
-            if (!S) { S = seed(); save(); }
-            enterApp();
-        });
-    }
-
-    function enterApp() {
-        $('#authScreen').classList.add('is-hidden');
-        $('#app').classList.remove('is-hidden');
-        $('#topName').textContent = S.admin.name;
-        $('#topMeta').textContent = S.admin.id + ' · full access · all actions logged';
-        paintBell(); paintBadges();
-        if (!location.hash.startsWith('#/')) location.hash = '#/overview';
-        route();
-    }
-
-    function paintBell() {
-        const unread = S.alerts.filter((a) => !a.read).length;
-        $('#bellDot').hidden = unread === 0;
-        $('#notifList').innerHTML = S.alerts.length ? S.alerts.slice(0, 12).map((a) => `
+  function paintBell() {
+    const unread = S.alerts.filter((a) => !a.read).length;
+    $('#bellDot').hidden = unread === 0;
+    $('#notifList').innerHTML = S.alerts.length ? S.alerts.slice(0, 12).map((a) => `
       <div class="notif ${a.read ? '' : 'is-new'}">
         <span class="sev sev--${a.sev}" style="margin-top:7px"></span>
         <div><div>${esc(a.text)}</div><time>${ago(a.at)}</time></div>
       </div>`).join('') : '<p class="muted">No alerts.</p>';
-    }
+  }
 
-    function paintBadges() {
-        const set = (el, n) => { el.textContent = n; el.classList.toggle('is-on', n > 0); };
-        set($('#badgeApprovals'), S.projects.filter((p) => p.status === 'pending').length);
-        set($('#badgeKyc'), S.users.filter((u) => u.kyc === 'pending').length);
-        set($('#badgeFraud'), S.alerts.filter((a) => a.sev === 'high' && !a.read).length +
-            S.disputes.filter((x) => x.status === 'open').length);
-    }
+  function paintBadges() {
+    const set = (el, n) => { el.textContent = n; el.classList.toggle('is-on', n > 0); };
+    set($('#badgeApprovals'), S.projects.filter((p) => p.status === 'pending').length);
+    set($('#badgeKyc'), S.users.filter((u) => u.kyc === 'pending').length);
+    set($('#badgeFraud'), S.alerts.filter((a) => a.sev === 'high' && !a.read).length +
+      S.disputes.filter((x) => x.status === 'open').length);
+  }
 
-    /* --------------------------------------------------------------- router */
-    const routes = {};
-    function route() {
-        const [name, a] = (location.hash.replace(/^#\//, '') || 'overview').split('/');
-        const view = routes[name] || routes.overview;
-        $$('[data-nav]').forEach((el) => el.classList.toggle('is-on', el.dataset.nav === name));
-        $('#main').innerHTML = view(a);
-        $('#rail').classList.remove('is-open');
-        paintBadges();
-        window.scrollTo(0, 0);
-        if (view.after) view.after(a);
-        bindRowActions();
-    }
+  /* --------------------------------------------------------------- router */
+  const routes = {};
+  function route() {
+    const [name, a] = (location.hash.replace(/^#\//, '') || 'overview').split('/');
+    const view = routes[name] || routes.overview;
+    $$('[data-nav]').forEach((el) => el.classList.toggle('is-on', el.dataset.nav === name));
+    $('#main').innerHTML = view(a);
+    $('#rail').classList.remove('is-open');
+    paintBadges();
+    window.scrollTo(0, 0);
+    if (view.after) view.after(a);
+    bindRowActions();
+  }
 
-    const tag = (s) => {
-        const map = {
-            pending: ['pending', 'Awaiting review'], funding: ['active', 'Raising funds'],
-            active: ['active', 'Running'], completed: ['completed', 'Completed'],
-            rejected: ['rejected', 'Rejected'], verified: ['active', 'Verified'],
-            suspended: ['rejected', 'Suspended'], open: ['pending', 'Open'],
-            resolved: ['completed', 'Resolved'], paid: ['completed', 'Paid'],
-            held: ['pending', 'Held'], complete: ['completed', 'Complete'],
-            live: ['active', 'Live'], removed: ['rejected', 'Removed'], approved: ['active', 'Approved']
-        };
-        const [cls, label] = map[s] || ['draft', s];
-        return `<span class="tag tag--${cls}">${label}</span>`;
+  const tag = (s) => {
+    const map = {
+      pending: ['pending', 'Awaiting review'], funding: ['active', 'Raising funds'],
+      active: ['active', 'Running'], completed: ['completed', 'Completed'],
+      rejected: ['rejected', 'Rejected'], verified: ['active', 'Verified'],
+      suspended: ['rejected', 'Suspended'], open: ['pending', 'Open'],
+      resolved: ['completed', 'Resolved'], paid: ['completed', 'Paid'],
+      held: ['pending', 'Held'], complete: ['completed', 'Complete'],
+      live: ['active', 'Live'], removed: ['rejected', 'Removed'], approved: ['active', 'Approved']
     };
+    const [cls, label] = map[s] || ['draft', s];
+    return `<span class="tag tag--${cls}">${label}</span>`;
+  };
 
-    /* --------------------------------------------------------------- totals */
-    function totals() {
-        const inflow = S.tx.filter((t) => ['investment', 'sale', 'premium'].includes(t.type) && t.status === 'complete')
-            .reduce((a, t) => a + t.amount, 0);
-        const outflow = S.tx.filter((t) => ['disbursement', 'payout', 'refund', 'claim', 'withdrawal'].includes(t.type) && t.status === 'complete')
-            .reduce((a, t) => a + t.amount, 0);
-        const fees = S.tx.reduce((a, t) => a + (t.fee || 0), 0);
-        const escrow = S.projects.reduce((a, p) => a + (p.escrow || 0), 0);
-        const held = S.tx.filter((t) => t.status === 'held').reduce((a, t) => a + t.amount, 0);
-        return { inflow, outflow, fees, escrow, held };
-    }
+  /* --------------------------------------------------------------- totals */
+  function totals() {
+    const inflow = S.tx.filter((t) => ['investment', 'sale', 'premium'].includes(t.type) && t.status === 'complete')
+      .reduce((a, t) => a + t.amount, 0);
+    const outflow = S.tx.filter((t) => ['disbursement', 'payout', 'refund', 'claim', 'withdrawal'].includes(t.type) && t.status === 'complete')
+      .reduce((a, t) => a + t.amount, 0);
+    const fees = S.tx.reduce((a, t) => a + (t.fee || 0), 0);
+    const escrow = S.projects.reduce((a, p) => a + (p.escrow || 0), 0);
+    const held = S.tx.filter((t) => t.status === 'held').reduce((a, t) => a + t.amount, 0);
+    return { inflow, outflow, fees, escrow, held };
+  }
 
-    /* ------------------------------------------------------------- overview */
-    routes.overview = function () {
-        const w = (S.settings && S.settings.dashboard) || DEFAULT_DASHBOARD_WIDGETS;
-        const T = totals();
-        const pend = S.projects.filter((p) => p.status === 'pending').length;
-        const kyc = S.users.filter((u) => u.kyc === 'pending').length;
-        const openD = S.disputes.filter((x) => x.status === 'open').length;
-        const highA = S.alerts.filter((a) => a.sev === 'high').length;
-        const funded = S.projects.reduce((a, p) => a + p.raised, 0);
-        const goalAll = S.projects.reduce((a, p) => a + p.goal, 0);
+  /* ------------------------------------------------------------- overview */
+  routes.overview = function () {
+    const w = (S.settings && S.settings.dashboard) || DEFAULT_DASHBOARD_WIDGETS;
+    const T = totals();
+    const pend = S.projects.filter((p) => p.status === 'pending').length;
+    const kyc = S.users.filter((u) => u.kyc === 'pending').length;
+    const openD = S.disputes.filter((x) => x.status === 'open').length;
+    const highA = S.alerts.filter((a) => a.sev === 'high').length;
+    const funded = S.projects.reduce((a, p) => a + p.raised, 0);
+    const goalAll = S.projects.reduce((a, p) => a + p.goal, 0);
 
-        const byDistrict = {};
-        S.projects.forEach((p) => { byDistrict[p.district] = (byDistrict[p.district] || 0) + p.raised; });
+    const byDistrict = {};
+    S.projects.forEach((p) => { byDistrict[p.district] = (byDistrict[p.district] || 0) + p.raised; });
 
-        const months = ['Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sept'];
-        const flow = [180000, 240000, 310000, 268000, 420000, 352000];
-        const max = Math.max.apply(null, flow);
+    const months = ['Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sept'];
+    const flow = [180000, 240000, 310000, 268000, 420000, 352000];
+    const max = Math.max.apply(null, flow);
 
-        const roles = ['Farmer', 'Investor', 'Field agent', 'Artisan', 'Buyer']
-            .map((r) => ({ r, n: S.users.filter((u) => u.role === r).length }));
-        const colours = ['#1B6B3A', '#2C6E8F', '#C8881A', '#7A4FA3', '#B8482C'];
-        const anyOn = w.waiting || w.stats || w.chart || w.roles || w.tx || w.audit;
+    const roles = ['Farmer', 'Investor', 'Field agent', 'Artisan', 'Buyer']
+      .map((r) => ({ r, n: S.users.filter((u) => u.role === r).length }));
+    const colours = ['#1B6B3A', '#2C6E8F', '#C8881A', '#7A4FA3', '#B8482C'];
+    const anyOn = w.waiting || w.stats || w.chart || w.roles || w.tx || w.audit;
 
-        return `
+    return `
       <div class="pagehead">
         <div><h1 class="h1">Platform overview</h1>
           <p>${S.users.length} accounts · ${S.projects.length} projects · ${S.tx.length} transactions on record</p></div>
@@ -304,12 +304,12 @@
         ${w.roles ? `<section class="box">
           <div class="box__head"><h3>Who is on the platform</h3></div>
           <div class="split">${roles.map((x, i) =>
-            `<span style="flex:${x.n || 0.001};background:${colours[i]}"></span>`).join('')}</div>
+      `<span style="flex:${x.n || 0.001};background:${colours[i]}"></span>`).join('')}</div>
           <div class="legend">${roles.map((x, i) =>
-                `<span><i style="background:${colours[i]}"></i>${x.r} · ${x.n}</span>`).join('')}</div>
+        `<span><i style="background:${colours[i]}"></i>${x.r} · ${x.n}</span>`).join('')}</div>
           <div class="box__head" style="margin-top:20px"><h3>Funding by district</h3></div>
           <div class="map">${Object.entries(byDistrict).sort((a, b) => b[1] - a[1]).map(([k, v]) =>
-                    `<div>${esc(k)}<b>${taka(v)}</b></div>`).join('')}</div>
+          `<div>${esc(k)}<b>${taka(v)}</b></div>`).join('')}</div>
         </section>` : ''}
       </div>` : ''}
 
@@ -328,17 +328,17 @@
 
       ${!anyOn ? `<div class="empty"><b>Your overview is empty</b>Every widget is turned off.
         <p><button class="btn btn--primary btn--sm" style="margin-top:10px" id="dashCustomizeEmpty">Turn widgets back on</button></p></div>` : ''}`;
-    };
+  };
 
-    routes.overview.after = function () {
-        const open = () => customizeDashboardModal();
-        const b1 = $('#dashCustomize'); if (b1) b1.addEventListener('click', open);
-        const b2 = $('#dashCustomizeEmpty'); if (b2) b2.addEventListener('click', open);
-    };
+  routes.overview.after = function () {
+    const open = () => customizeDashboardModal();
+    const b1 = $('#dashCustomize'); if (b1) b1.addEventListener('click', open);
+    const b2 = $('#dashCustomizeEmpty'); if (b2) b2.addEventListener('click', open);
+  };
 
-    function customizeDashboardModal() {
-        const w = S.settings.dashboard;
-        modal('Customize your overview', `
+  function customizeDashboardModal() {
+    const w = S.settings.dashboard;
+    modal('Customize your overview', `
       <p class="muted">Turn off anything you don't want to see every time you sign in. This only changes your own view — other admins are unaffected.</p>
       <div class="widgetlist">
         ${DASHBOARD_WIDGETS.map((d) => `
@@ -351,22 +351,22 @@
         <button class="btn btn--ghost btn--sm" id="widgetsResetBtn">Reset to default</button>
         <button class="btn btn--primary btn--sm" id="widgetsDoneBtn">Done</button>
       </div>`, () => {
-            $$('[data-widget]').forEach((cb) => cb.addEventListener('change', () => {
-                S.settings.dashboard[cb.dataset.widget] = cb.checked;
-                save();
-            }));
-            $('#widgetsResetBtn').addEventListener('click', () => {
-                S.settings.dashboard = { ...DEFAULT_DASHBOARD_WIDGETS };
-                save(); closeModal(); toast('Overview reset to default.'); route();
-            });
-            $('#widgetsDoneBtn').addEventListener('click', () => { closeModal(); route(); });
-        });
-    }
+      $$('[data-widget]').forEach((cb) => cb.addEventListener('change', () => {
+        S.settings.dashboard[cb.dataset.widget] = cb.checked;
+        save();
+      }));
+      $('#widgetsResetBtn').addEventListener('click', () => {
+        S.settings.dashboard = { ...DEFAULT_DASHBOARD_WIDGETS };
+        save(); closeModal(); toast('Overview reset to default.'); route();
+      });
+      $('#widgetsDoneBtn').addEventListener('click', () => { closeModal(); route(); });
+    });
+  }
 
-    function txTable(rows, compact) {
-        if (!rows.length) return '<div class="empty"><b>Nothing matches</b>Try a different filter.</div>';
-        if (compact) {
-            return `<div style="overflow-x:auto"><table><thead><tr>
+  function txTable(rows, compact) {
+    if (!rows.length) return '<div class="empty"><b>Nothing matches</b>Try a different filter.</div>';
+    if (compact) {
+      return `<div style="overflow-x:auto"><table><thead><tr>
         <th>Transaction</th><th>Type</th><th class="num">Amount</th><th>Status</th></tr></thead><tbody>
         ${rows.map((t) => `<tr>
           <td><b>${t.id}</b><div class="pcard__meta">${esc(t.from)} → ${esc(t.to)}</div>
@@ -374,8 +374,8 @@
           <td>${t.type}</td>
           <td class="num" style="font-weight:600">${taka(t.amount)}</td>
           <td>${tag(t.status)}</td></tr>`).join('')}</tbody></table></div>`;
-        }
-        return `<div style="overflow-x:auto"><table><thead><tr>
+    }
+    return `<div style="overflow-x:auto"><table><thead><tr>
       <th>ID</th><th>When</th><th>Type</th><th>From \u2192 to</th><th>Method</th>
       <th class="num">Fee</th><th class="num">Amount</th><th>Status</th><th></th>
       </tr></thead><tbody>${rows.map((t) => `<tr>
@@ -385,20 +385,20 @@
         <td class="num" style="font-weight:600">${taka(t.amount)}</td>
         <td>${tag(t.status)}</td>
         <td>${t.status === 'held'
-                ? `<button class="btn btn--ghost btn--sm" data-release="${t.id}">Release</button>`
-                : `<button class="btn btn--ghost btn--sm" data-txview="${t.id}">View</button>`}</td>
+        ? `<button class="btn btn--ghost btn--sm" data-release="${t.id}">Release</button>`
+        : `<button class="btn btn--ghost btn--sm" data-txview="${t.id}">View</button>`}</td>
       </tr>`).join('')}</tbody></table></div>`;
-    }
+  }
 
-    /* ------------------------------------------------------------ approvals */
-    routes.approvals = function () {
-        const q = S.projects.filter((p) => p.status === 'pending');
-        return `
+  /* ------------------------------------------------------------ approvals */
+  routes.approvals = function () {
+    const q = S.projects.filter((p) => p.status === 'pending');
+    return `
       <div class="pagehead"><div><h1 class="h1">Approval queue</h1>
         <p>Nothing reaches investors until it is approved here. Aim for a 48-hour turnaround.</p></div></div>
       ${q.length ? q.map((p) => {
-            const owner = S.users.find((u) => u.id === p.ownerId) || {};
-            return `<div class="queue">
+      const owner = S.users.find((u) => u.id === p.ownerId) || {};
+      return `<div class="queue">
           <span class="queue__ico">${CAT[p.category]}</span>
           <div class="queue__main">
             <h4>${esc(p.title)}</h4>
@@ -412,7 +412,7 @@
             ${p.riskLevel === 'high' || !p.docs.length || owner.kyc !== 'verified' ? `
               <p class="pcard__meta" style="color:var(--clay);margin-top:8px">
                 ${[p.riskLevel === 'high' ? 'high risk score' : '', !p.docs.length ? 'no supporting document' : '',
-                    owner.kyc !== 'verified' ? 'owner not KYC verified' : ''].filter(Boolean).join(' · ')}
+          owner.kyc !== 'verified' ? 'owner not KYC verified' : ''].filter(Boolean).join(' · ')}
               </p>` : ''}
           </div>
           <div class="queue__acts">
@@ -421,21 +421,21 @@
             <button class="btn btn--primary btn--sm" data-approve="${p.id}">Approve</button>
           </div>
         </div>`;
-        }).join('')
-                : '<div class="empty"><b>Queue is clear</b>Every submitted project has been reviewed.</div>'}`;
-    };
+    }).join('')
+        : '<div class="empty"><b>Queue is clear</b>Every submitted project has been reviewed.</div>'}`;
+  };
 
-    /* ------------------------------------------------------------- projects */
-    routes.projects = function (filter) {
-        const f = filter || 'all';
-        const list = S.projects.filter((p) => f === 'all' || p.status === f);
-        return `
+  /* ------------------------------------------------------------- projects */
+  routes.projects = function (filter) {
+    const f = filter || 'all';
+    const list = S.projects.filter((p) => f === 'all' || p.status === f);
+    return `
       <div class="pagehead"><div><h1 class="h1">All projects</h1>
         <p>Every listing on the platform, at any stage.</p></div>
         <button class="btn btn--ghost" data-export="projects">Export CSV</button></div>
       <div class="tabs">${[['all', 'All'], ['pending', 'Pending'], ['funding', 'Raising'], ['active', 'Running'],
-            ['completed', 'Completed'], ['rejected', 'Rejected']].map(([k, l]) =>
-                `<button class="${f === k ? 'is-on' : ''}" onclick="location.hash='#/projects/${k}'">${l}</button>`).join('')}</div>
+      ['completed', 'Completed'], ['rejected', 'Rejected']].map(([k, l]) =>
+        `<button class="${f === k ? 'is-on' : ''}" onclick="location.hash='#/projects/${k}'">${l}</button>`).join('')}</div>
       ${list.length ? `<div class="box"><div style="overflow-x:auto"><table><thead><tr>
         <th>Project</th><th>Owner</th><th>District</th><th class="num">Goal</th><th class="num">Raised</th>
         <th>Risk</th><th>Status</th><th></th></tr></thead><tbody>
@@ -448,21 +448,21 @@
           <td>${tag(p.status)}</td>
           <td><button class="btn btn--ghost btn--sm" data-inspect="${p.id}">Open</button></td>
         </tr>`).join('')}</tbody></table></div></div>`
-                : '<div class="empty"><b>No projects in this state</b>Try another tab.</div>'}`;
-    };
+        : '<div class="empty"><b>No projects in this state</b>Try another tab.</div>'}`;
+  };
 
-    /* ---------------------------------------------------------------- users */
-    routes.users = function (filter) {
-        const f = filter || 'all';
-        const list = S.users.filter((u) => f === 'all' ? true : f === 'pending' ? u.kyc === 'pending'
-            : f === 'flagged' ? u.flagged : u.role.toLowerCase().indexOf(f) === 0);
-        return `
+  /* ---------------------------------------------------------------- users */
+  routes.users = function (filter) {
+    const f = filter || 'all';
+    const list = S.users.filter((u) => f === 'all' ? true : f === 'pending' ? u.kyc === 'pending'
+      : f === 'flagged' ? u.flagged : u.role.toLowerCase().indexOf(f) === 0);
+    return `
       <div class="pagehead"><div><h1 class="h1">Users and verification</h1>
         <p>Approve KYC, suspend accounts, and see who is behind every project.</p></div>
         <button class="btn btn--ghost" data-export="users">Export CSV</button></div>
       <div class="tabs">${[['all', 'All'], ['pending', 'KYC pending'], ['farmer', 'Farmers'], ['investor', 'Investors'],
-            ['field', 'Field agents'], ['flagged', 'Flagged']].map(([k, l]) =>
-                `<button class="${f === k ? 'is-on' : ''}" onclick="location.hash='#/users/${k}'">${l}</button>`).join('')}</div>
+      ['field', 'Field agents'], ['flagged', 'Flagged']].map(([k, l]) =>
+        `<button class="${f === k ? 'is-on' : ''}" onclick="location.hash='#/users/${k}'">${l}</button>`).join('')}</div>
       ${list.length ? `<div class="box"><div style="overflow-x:auto"><table><thead><tr>
         <th>User</th><th>Role</th><th>District</th><th>Joined</th><th>KYC</th><th>Account</th><th></th>
         </tr></thead><tbody>${list.map((u) => `<tr>
@@ -474,14 +474,14 @@
             ${u.kyc === 'pending' ? `<button class="btn btn--primary btn--sm" data-kyc="${u.id}">Review KYC</button>` : ''}
             <button class="btn btn--ghost btn--sm" data-user="${u.id}">Open</button>
           </div></td></tr>`).join('')}</tbody></table></div></div>`
-                : '<div class="empty"><b>No users here</b>Try another tab.</div>'}`;
-    };
+        : '<div class="empty"><b>No users here</b>Try another tab.</div>'}`;
+  };
 
-    /* -------------------------------------------------------------- finance */
-    routes.finance = function () {
-        const T = totals();
-        const pend = S.disbursements.filter((x) => x.status === 'pending');
-        return `
+  /* -------------------------------------------------------------- finance */
+  routes.finance = function () {
+    const T = totals();
+    const pend = S.disbursements.filter((x) => x.status === 'pending');
+    return `
       <div class="pagehead"><div><h1 class="h1">Finance</h1>
         <p>Every taka in, out and sitting in escrow.</p></div>
         <button class="btn btn--ghost" data-export="transactions">Export CSV</button></div>
@@ -511,7 +511,7 @@
             <button class="btn btn--danger btn--sm" data-dsbhold="${x.id}">Hold</button>
             <button class="btn btn--primary btn--sm" data-dsbrelease="${x.id}">Release funds</button>
           </div></div>`).join('')
-                : '<div class="empty"><b>No requests waiting</b>Released disbursements appear in the ledger below.</div>'}
+        : '<div class="empty"><b>No requests waiting</b>Released disbursements appear in the ledger below.</div>'}
       </section>
 
       <section class="box">
@@ -520,35 +520,35 @@
           <input id="fqText" placeholder="Search name, ID or project">
           <select id="fqType"><option value="">All types</option>
             ${['investment', 'disbursement', 'withdrawal', 'sale', 'payout', 'premium', 'claim', 'refund']
-                .map((t) => `<option>${t}</option>`).join('')}</select>
+        .map((t) => `<option>${t}</option>`).join('')}</select>
           <select id="fqStatus"><option value="">Any status</option><option>complete</option><option>held</option></select>
           <button class="btn btn--ghost btn--sm" id="fqClear">Clear</button>
         </div>
         <div id="ledger">${txTable(S.tx)}</div>
       </section>`;
-    };
+  };
 
-    routes.finance.after = function () {
-        const apply = () => {
-            const q = $('#fqText').value.trim().toLowerCase();
-            const ty = $('#fqType').value, st = $('#fqStatus').value;
-            const rows = S.tx.filter((t) =>
-                (!ty || t.type === ty) && (!st || t.status === st) &&
-                (!q || [t.id, t.from, t.to, t.project, t.method].join(' ').toLowerCase().includes(q)));
-            $('#ledger').innerHTML = txTable(rows);
-            bindRowActions();
-        };
-        ['fqText', 'fqType', 'fqStatus'].forEach((id) => $('#' + id).addEventListener('input', apply));
-        $('#fqClear').addEventListener('click', () => {
-            $('#fqText').value = ''; $('#fqType').value = ''; $('#fqStatus').value = ''; apply();
-        });
+  routes.finance.after = function () {
+    const apply = () => {
+      const q = $('#fqText').value.trim().toLowerCase();
+      const ty = $('#fqType').value, st = $('#fqStatus').value;
+      const rows = S.tx.filter((t) =>
+        (!ty || t.type === ty) && (!st || t.status === st) &&
+        (!q || [t.id, t.from, t.to, t.project, t.method].join(' ').toLowerCase().includes(q)));
+      $('#ledger').innerHTML = txTable(rows);
+      bindRowActions();
     };
+    ['fqText', 'fqType', 'fqStatus'].forEach((id) => $('#' + id).addEventListener('input', apply));
+    $('#fqClear').addEventListener('click', () => {
+      $('#fqText').value = ''; $('#fqType').value = ''; $('#fqStatus').value = ''; apply();
+    });
+  };
 
-    /* ----------------------------------------------------- fraud & disputes */
-    routes.fraud = function () {
-        const open = S.disputes.filter((x) => x.status === 'open');
-        const closed = S.disputes.filter((x) => x.status !== 'open');
-        return `
+  /* ----------------------------------------------------- fraud & disputes */
+  routes.fraud = function () {
+    const open = S.disputes.filter((x) => x.status === 'open');
+    const closed = S.disputes.filter((x) => x.status !== 'open');
+    return `
       <div class="pagehead"><div><h1 class="h1">Fraud and disputes</h1>
         <p>Signals raised by the system, plus complaints raised by people.</p></div></div>
 
@@ -581,13 +581,13 @@
             <button class="btn btn--primary btn--sm" data-resolve="${x.id}">Resolve</button></div>` : ''}
         </div>`).join('')}
       </section>`;
-    };
+  };
 
-    /* ------------------------------------------------------ insurance claims */
-    routes.claims = function () {
-        const pool = S.tx.filter((t) => t.type === 'premium').reduce((a, t) => a + t.amount, 0);
-        const paid = S.claims.filter((c) => c.status === 'paid').reduce((a, c) => a + c.amount, 0);
-        return `
+  /* ------------------------------------------------------ insurance claims */
+  routes.claims = function () {
+    const pool = S.tx.filter((t) => t.type === 'premium').reduce((a, t) => a + t.amount, 0);
+    const paid = S.claims.filter((c) => c.status === 'paid').reduce((a, c) => a + c.amount, 0);
+    return `
       <div class="pagehead"><div><h1 class="h1">Insurance claims</h1>
         <p>Claims are paid from the central pool once a field agent confirms the loss.</p></div></div>
       <dl class="cards cols-3" style="margin-bottom:18px">
@@ -609,12 +609,12 @@
           <button class="btn btn--primary btn--sm" data-claimpay="${c.id}" ${c.agentVerified ? '' : 'disabled title="Needs field verification first"'}>Approve payout</button>
         </div>` : ''}
       </div>`).join('')}`;
-    };
+  };
 
-    /* ---------------------------------------------------------- marketplace */
-    routes.market = function () {
-        const gmv = S.products.reduce((a, p) => a + p.price * p.sold, 0);
-        return `
+  /* ---------------------------------------------------------- marketplace */
+  routes.market = function () {
+    const gmv = S.products.reduce((a, p) => a + p.price * p.sold, 0);
+    return `
       <div class="pagehead"><div><h1 class="h1">Marketplace moderation</h1>
         <p>Listings from farmers and artisans. Reported items come to the top.</p></div></div>
       <dl class="cards cols-3" style="margin-bottom:18px">
@@ -632,22 +632,22 @@
           <td>${p.reports ? `<span class="tag tag--rejected">${p.reports}</span>` : '—'}</td>
           <td>${tag(p.status)}</td>
           <td>${p.status === 'live'
-                ? `<button class="btn btn--danger btn--sm" data-takedown="${p.id}">Take down</button>`
-                : `<button class="btn btn--ghost btn--sm" data-restore="${p.id}">Restore</button>`}</td>
+        ? `<button class="btn btn--danger btn--sm" data-takedown="${p.id}">Take down</button>`
+        : `<button class="btn btn--ghost btn--sm" data-restore="${p.id}">Restore</button>`}</td>
         </tr>`).join('')}</tbody></table></div></div>`;
-    };
+  };
 
-    /* ------------------------------------------------------ reports & audit */
-    routes.reports = function () {
-        const T = totals();
-        return `
+  /* ------------------------------------------------------ reports & audit */
+  routes.reports = function () {
+    const T = totals();
+    return `
       <div class="pagehead"><div><h1 class="h1">Reports and audit log</h1>
         <p>Export platform data, or read back every decision made in this console.</p></div></div>
       <div class="cards cols-3" style="margin-bottom:18px">
         ${[['projects', 'Projects', 'Every listing with owner, goal, raised amount, risk and status.'],
-            ['users', 'Users and KYC', 'Accounts with role, district, verification and account state.'],
-            ['transactions', 'Transaction ledger', 'All money movements with fees, methods and status.']]
-                .map(([k, t, d2]) => `<section class="box">
+      ['users', 'Users and KYC', 'Accounts with role, district, verification and account state.'],
+      ['transactions', 'Transaction ledger', 'All money movements with fees, methods and status.']]
+        .map(([k, t, d2]) => `<section class="box">
             <h3 class="h3">${t}</h3><p class="pcard__meta" style="margin:6px 0 12px">${d2}</p>
             <button class="btn btn--ghost btn--sm" data-export="${k}">Download CSV</button></section>`).join('')}
       </div>
@@ -661,7 +661,7 @@
           <dt>Platform revenue</dt><dd>${taka(T.fees)}</dd>
           <dt>Projects funded</dt><dd>${S.projects.filter((p) => p.raised >= p.goal && p.goal > 0).length} of ${S.projects.length}</dd>
           <dt>Approval rate</dt><dd>${pct(S.projects.filter((p) => p.status !== 'rejected' && p.status !== 'pending').length,
-                    S.projects.filter((p) => p.status !== 'pending').length)}%</dd>
+          S.projects.filter((p) => p.status !== 'pending').length)}%</dd>
           <dt>Claims paid</dt><dd>${taka(S.claims.filter((c) => c.status === 'paid').reduce((a, c) => a + c.amount, 0))}</dd>
         </dl>
       </section>
@@ -672,11 +672,11 @@
           <div><b>${esc(l.action)}</b> ${esc(l.target)} <span class="pcard__meta">by ${esc(l.by)}</span>
           ${l.note ? `<div class="pcard__meta">${esc(l.note)}</div>` : ''}</div></li>`).join('')}</ul>
       </section>`;
-    };
+  };
 
-    /* ------------------------------------------------------------- graphify */
-    routes.graphify = function () {
-        return `
+  /* ------------------------------------------------------------- graphify */
+  routes.graphify = function () {
+    return `
       <div class="graphify-wrap">
         <!-- ── Page Header ───────────────────────────────────── -->
         <div class="graphify-header">
@@ -835,208 +835,208 @@
           </div>
         </div>
       </div>`;
+  };
+
+  routes.graphify.after = function () {
+    // Complete default 46 nodes, 75 edges, 17 groups matching jony_gm.new
+    const defaultData = {
+      nodes: [
+        { id: "app.module", label: "AppModule", group: "core", size: 18, desc: "Root application module" },
+        { id: "main", label: "main.ts", group: "core", size: 12, desc: "Bootstrap entrypoint" },
+        { id: "auth.module", label: "AuthModule", group: "auth", size: 14, desc: "JWT authentication & guards" },
+        { id: "auth.controller", label: "AuthController", group: "auth", size: 10, desc: "Login / register routes" },
+        { id: "auth.service", label: "AuthService", group: "auth", size: 12, desc: "JWT signing & validation" },
+        { id: "jwt-auth.guard", label: "JwtAuthGuard", group: "auth", size: 8, desc: "Route protection guard" },
+        { id: "users.module", label: "UsersModule", group: "users", size: 13, desc: "Farmer / Investor / Admin" },
+        { id: "users.service", label: "UsersService", group: "users", size: 11, desc: "CRUD user management" },
+        { id: "deals.module", label: "DealsModule", group: "deals", size: 16, desc: "Agricultural deal lifecycle" },
+        { id: "deals.controller", label: "DealsController", group: "deals", size: 11, desc: "REST deal endpoints" },
+        { id: "deals.service", label: "DealsService", group: "deals", size: 13, desc: "Deal CRUD + mock fallback" },
+        { id: "blockchain.module", label: "BlockchainModule", group: "blockchain", size: 16, desc: "Base Sepolia EVM integration" },
+        { id: "blockchain.service", label: "BlockchainService", group: "blockchain", size: 14, desc: "viem contract interaction" },
+        { id: "blockchain.controller", label: "BlockchainController", group: "blockchain", size: 10, desc: "Tx hash & balance routes" },
+        { id: "escrow.module", label: "EscrowModule", group: "escrow", size: 14, desc: "Non-custodial capital lock" },
+        { id: "escrow.service", label: "EscrowService", group: "escrow", size: 12, desc: "Milestone unlock logic" },
+        { id: "investments.module", label: "InvestmentsModule", group: "investments", size: 14, desc: "Mudarabah deal tracking" },
+        { id: "investments.service", label: "InvestmentsService", group: "investments", size: 11, desc: "Portfolio management" },
+        { id: "payments.module", label: "PaymentsModule", group: "payments", size: 13, desc: "Halal payment processing" },
+        { id: "payments.service", label: "PaymentsService", group: "payments", size: 11, desc: "Transaction validation" },
+        { id: "profits.module", label: "ProfitsModule", group: "profits", size: 12, desc: "Profit distribution engine" },
+        { id: "profits.service", label: "ProfitsService", group: "profits", size: 10, desc: "Ratio-based split" },
+        { id: "ledger.module", label: "LedgerModule", group: "ledger", size: 12, desc: "Double-entry accounting" },
+        { id: "ledger.service", label: "LedgerService", group: "ledger", size: 10, desc: "Debit/credit balance" },
+        { id: "oracle.module", label: "OracleModule", group: "oracle", size: 11, desc: "IoT GNSS price feeds" },
+        { id: "oracle.service", label: "OracleService", group: "oracle", size: 9, desc: "Price + geo-fence data" },
+        { id: "farmers.module", label: "FarmersModule", group: "farmers", size: 13, desc: "Farmer KYC & profile" },
+        { id: "farms.module", label: "FarmsModule", group: "farmers", size: 11, desc: "Farm land registry" },
+        { id: "investors.module", label: "InvestorsModule", group: "investors", size: 12, desc: "Investor onboarding" },
+        { id: "dashboard.module", label: "DashboardModule", group: "analytics", size: 13, desc: "Aggregated KPIs" },
+        { id: "crops.module", label: "CropsModule", group: "analytics", size: 10, desc: "Crop metadata catalog" },
+        { id: "database.module", label: "DatabaseModule", group: "infra", size: 15, desc: "Prisma ORM connection pool" },
+        { id: "notifications.module", label: "NotificationsModule", group: "infra", size: 11, desc: "Email + WebSocket alerts" },
+        { id: "audit.module", label: "AuditModule", group: "infra", size: 10, desc: "Immutable audit trail" },
+        { id: "wallets.module", label: "WalletsModule", group: "infra", size: 10, desc: "HD wallet management" },
+        { id: "webhooks.module", label: "WebhooksModule", group: "infra", size: 9, desc: "Event webhooks dispatch" },
+        { id: "settlements.module", label: "SettlementsModule", group: "infra", size: 10, desc: "Final settlement logic" },
+        { id: "admin.module", label: "AdminModule", group: "infra", size: 10, desc: "Admin control panel" },
+        { id: "common.filters", label: "GlobalFilters", group: "infra", size: 8, desc: "Exception & logging" },
+        { id: "rust.indexer", label: "Rust Indexer", group: "rust", size: 14, desc: "14,450 logs/sec Alloy indexer" },
+        { id: "redis.stream", label: "Redis Stream", group: "rust", size: 10, desc: "Event stream bus" },
+        { id: "contract.registry", label: "ProjectRegistry.sol", group: "contracts", size: 12, desc: "On-chain project registration" },
+        { id: "contract.factory", label: "DealFactory.sol", group: "contracts", size: 11, desc: "Deal deployment factory" },
+        { id: "contract.escrow", label: "Escrow.sol", group: "contracts", size: 12, desc: "Non-custodial capital vault" },
+        { id: "contract.profit", label: "ProfitDist.sol", group: "contracts", size: 10, desc: "Mudarabah profit split" },
+        { id: "contract.oracle", label: "Oracle.sol", group: "contracts", size: 9, desc: "Price feed aggregator" },
+      ],
+      links: [
+        { source: "main", target: "app.module", type: "imports" },
+        { source: "app.module", target: "auth.module", type: "imports" },
+        { source: "app.module", target: "users.module", type: "imports" },
+        { source: "app.module", target: "deals.module", type: "imports" },
+        { source: "app.module", target: "blockchain.module", type: "imports" },
+        { source: "app.module", target: "escrow.module", type: "imports" },
+        { source: "app.module", target: "investments.module", type: "imports" },
+        { source: "app.module", target: "payments.module", type: "imports" },
+        { source: "app.module", target: "profits.module", type: "imports" },
+        { source: "app.module", target: "ledger.module", type: "imports" },
+        { source: "app.module", target: "oracle.module", type: "imports" },
+        { source: "app.module", target: "farmers.module", type: "imports" },
+        { source: "app.module", target: "farms.module", type: "imports" },
+        { source: "app.module", target: "investors.module", type: "imports" },
+        { source: "app.module", target: "dashboard.module", type: "imports" },
+        { source: "app.module", target: "crops.module", type: "imports" },
+        { source: "app.module", target: "database.module", type: "imports" },
+        { source: "app.module", target: "notifications.module", type: "imports" },
+        { source: "app.module", target: "audit.module", type: "imports" },
+        { source: "app.module", target: "wallets.module", type: "imports" },
+        { source: "app.module", target: "webhooks.module", type: "imports" },
+        { source: "app.module", target: "settlements.module", type: "imports" },
+        { source: "app.module", target: "admin.module", type: "imports" },
+        { source: "auth.module", target: "auth.controller", type: "provides" },
+        { source: "auth.module", target: "auth.service", type: "provides" },
+        { source: "auth.module", target: "jwt-auth.guard", type: "provides" },
+        { source: "auth.service", target: "users.service", type: "calls" },
+        { source: "users.module", target: "users.service", type: "provides" },
+        { source: "users.service", target: "database.module", type: "calls" },
+        { source: "deals.module", target: "deals.controller", type: "provides" },
+        { source: "deals.module", target: "deals.service", type: "provides" },
+        { source: "deals.controller", target: "jwt-auth.guard", type: "guards" },
+        { source: "deals.service", target: "database.module", type: "calls" },
+        { source: "deals.service", target: "blockchain.service", type: "calls" },
+        { source: "deals.service", target: "notifications.module", type: "calls" },
+        { source: "deals.service", target: "ledger.service", type: "calls" },
+        { source: "blockchain.module", target: "blockchain.controller", type: "provides" },
+        { source: "blockchain.module", target: "blockchain.service", type: "provides" },
+        { source: "blockchain.service", target: "contract.registry", type: "calls" },
+        { source: "blockchain.service", target: "contract.factory", type: "calls" },
+        { source: "blockchain.service", target: "contract.escrow", type: "calls" },
+        { source: "blockchain.service", target: "contract.profit", type: "calls" },
+        { source: "blockchain.service", target: "contract.oracle", type: "calls" },
+        { source: "escrow.module", target: "escrow.service", type: "provides" },
+        { source: "escrow.service", target: "blockchain.service", type: "calls" },
+        { source: "escrow.service", target: "contract.escrow", type: "calls" },
+        { source: "investments.module", target: "investments.service", type: "provides" },
+        { source: "investments.service", target: "deals.service", type: "calls" },
+        { source: "investments.service", target: "database.module", type: "calls" },
+        { source: "payments.module", target: "payments.service", type: "provides" },
+        { source: "payments.service", target: "ledger.service", type: "calls" },
+        { source: "profits.module", target: "profits.service", type: "provides" },
+        { source: "profits.service", target: "contract.profit", type: "calls" },
+        { source: "profits.service", target: "ledger.service", type: "calls" },
+        { source: "ledger.module", target: "ledger.service", type: "provides" },
+        { source: "ledger.service", target: "database.module", type: "calls" },
+        { source: "oracle.module", target: "oracle.service", type: "provides" },
+        { source: "oracle.service", target: "contract.oracle", type: "calls" },
+        { source: "oracle.service", target: "redis.stream", type: "calls" },
+        { source: "farmers.module", target: "database.module", type: "calls" },
+        { source: "farms.module", target: "database.module", type: "calls" },
+        { source: "investors.module", target: "database.module", type: "calls" },
+        { source: "rust.indexer", target: "redis.stream", type: "streams" },
+        { source: "rust.indexer", target: "contract.registry", type: "indexes" },
+        { source: "rust.indexer", target: "contract.factory", type: "indexes" },
+        { source: "rust.indexer", target: "contract.escrow", type: "indexes" },
+        { source: "redis.stream", target: "oracle.service", type: "streams" },
+        { source: "redis.stream", target: "notifications.module", type: "streams" },
+        { source: "audit.module", target: "database.module", type: "calls" },
+        { source: "admin.module", target: "users.service", type: "calls" },
+        { source: "admin.module", target: "deals.service", type: "calls" },
+        { source: "webhooks.module", target: "notifications.module", type: "calls" },
+        { source: "settlements.module", target: "profits.service", type: "calls" },
+        { source: "settlements.module", target: "blockchain.service", type: "calls" },
+        { source: "wallets.module", target: "blockchain.service", type: "calls" },
+      ],
+      meta: {
+        totalNodes: 46,
+        totalEdges: 75,
+        groups: {
+          core: { label: "Core Application", color: "#6366f1" },
+          auth: { label: "Authentication", color: "#ec4899" },
+          users: { label: "Users", color: "#8b5cf6" },
+          deals: { label: "Deals", color: "#10b981" },
+          blockchain: { label: "Blockchain / EVM", color: "#3b82f6" },
+          escrow: { label: "Escrow", color: "#06b6d4" },
+          investments: { label: "Investments", color: "#14b8a6" },
+          payments: { label: "Payments", color: "#f59e0b" },
+          profits: { label: "Profits", color: "#84cc16" },
+          ledger: { label: "Ledger", color: "#a78bfa" },
+          oracle: { label: "Oracle / IoT", color: "#f97316" },
+          farmers: { label: "Farmers / Farms", color: "#22c55e" },
+          investors: { label: "Investors", color: "#0ea5e9" },
+          analytics: { label: "Dashboard / Analytics", color: "#64748b" },
+          infra: { label: "Infrastructure", color: "#78716c" },
+          rust: { label: "Rust Indexer", color: "#ef4444" },
+          contracts: { label: "Smart Contracts", color: "#7c3aed" },
+        }
+      }
     };
 
-    routes.graphify.after = function () {
-        // Complete default 46 nodes, 75 edges, 17 groups matching jony_gm.new
-        const defaultData = {
-            nodes: [
-                { id: "app.module", label: "AppModule", group: "core", size: 18, desc: "Root application module" },
-                { id: "main", label: "main.ts", group: "core", size: 12, desc: "Bootstrap entrypoint" },
-                { id: "auth.module", label: "AuthModule", group: "auth", size: 14, desc: "JWT authentication & guards" },
-                { id: "auth.controller", label: "AuthController", group: "auth", size: 10, desc: "Login / register routes" },
-                { id: "auth.service", label: "AuthService", group: "auth", size: 12, desc: "JWT signing & validation" },
-                { id: "jwt-auth.guard", label: "JwtAuthGuard", group: "auth", size: 8, desc: "Route protection guard" },
-                { id: "users.module", label: "UsersModule", group: "users", size: 13, desc: "Farmer / Investor / Admin" },
-                { id: "users.service", label: "UsersService", group: "users", size: 11, desc: "CRUD user management" },
-                { id: "deals.module", label: "DealsModule", group: "deals", size: 16, desc: "Agricultural deal lifecycle" },
-                { id: "deals.controller", label: "DealsController", group: "deals", size: 11, desc: "REST deal endpoints" },
-                { id: "deals.service", label: "DealsService", group: "deals", size: 13, desc: "Deal CRUD + mock fallback" },
-                { id: "blockchain.module", label: "BlockchainModule", group: "blockchain", size: 16, desc: "Base Sepolia EVM integration" },
-                { id: "blockchain.service", label: "BlockchainService", group: "blockchain", size: 14, desc: "viem contract interaction" },
-                { id: "blockchain.controller", label: "BlockchainController", group: "blockchain", size: 10, desc: "Tx hash & balance routes" },
-                { id: "escrow.module", label: "EscrowModule", group: "escrow", size: 14, desc: "Non-custodial capital lock" },
-                { id: "escrow.service", label: "EscrowService", group: "escrow", size: 12, desc: "Milestone unlock logic" },
-                { id: "investments.module", label: "InvestmentsModule", group: "investments", size: 14, desc: "Mudarabah deal tracking" },
-                { id: "investments.service", label: "InvestmentsService", group: "investments", size: 11, desc: "Portfolio management" },
-                { id: "payments.module", label: "PaymentsModule", group: "payments", size: 13, desc: "Halal payment processing" },
-                { id: "payments.service", label: "PaymentsService", group: "payments", size: 11, desc: "Transaction validation" },
-                { id: "profits.module", label: "ProfitsModule", group: "profits", size: 12, desc: "Profit distribution engine" },
-                { id: "profits.service", label: "ProfitsService", group: "profits", size: 10, desc: "Ratio-based split" },
-                { id: "ledger.module", label: "LedgerModule", group: "ledger", size: 12, desc: "Double-entry accounting" },
-                { id: "ledger.service", label: "LedgerService", group: "ledger", size: 10, desc: "Debit/credit balance" },
-                { id: "oracle.module", label: "OracleModule", group: "oracle", size: 11, desc: "IoT GNSS price feeds" },
-                { id: "oracle.service", label: "OracleService", group: "oracle", size: 9, desc: "Price + geo-fence data" },
-                { id: "farmers.module", label: "FarmersModule", group: "farmers", size: 13, desc: "Farmer KYC & profile" },
-                { id: "farms.module", label: "FarmsModule", group: "farmers", size: 11, desc: "Farm land registry" },
-                { id: "investors.module", label: "InvestorsModule", group: "investors", size: 12, desc: "Investor onboarding" },
-                { id: "dashboard.module", label: "DashboardModule", group: "analytics", size: 13, desc: "Aggregated KPIs" },
-                { id: "crops.module", label: "CropsModule", group: "analytics", size: 10, desc: "Crop metadata catalog" },
-                { id: "database.module", label: "DatabaseModule", group: "infra", size: 15, desc: "Prisma ORM connection pool" },
-                { id: "notifications.module", label: "NotificationsModule", group: "infra", size: 11, desc: "Email + WebSocket alerts" },
-                { id: "audit.module", label: "AuditModule", group: "infra", size: 10, desc: "Immutable audit trail" },
-                { id: "wallets.module", label: "WalletsModule", group: "infra", size: 10, desc: "HD wallet management" },
-                { id: "webhooks.module", label: "WebhooksModule", group: "infra", size: 9, desc: "Event webhooks dispatch" },
-                { id: "settlements.module", label: "SettlementsModule", group: "infra", size: 10, desc: "Final settlement logic" },
-                { id: "admin.module", label: "AdminModule", group: "infra", size: 10, desc: "Admin control panel" },
-                { id: "common.filters", label: "GlobalFilters", group: "infra", size: 8, desc: "Exception & logging" },
-                { id: "rust.indexer", label: "Rust Indexer", group: "rust", size: 14, desc: "14,450 logs/sec Alloy indexer" },
-                { id: "redis.stream", label: "Redis Stream", group: "rust", size: 10, desc: "Event stream bus" },
-                { id: "contract.registry", label: "ProjectRegistry.sol", group: "contracts", size: 12, desc: "On-chain project registration" },
-                { id: "contract.factory", label: "DealFactory.sol", group: "contracts", size: 11, desc: "Deal deployment factory" },
-                { id: "contract.escrow", label: "Escrow.sol", group: "contracts", size: 12, desc: "Non-custodial capital vault" },
-                { id: "contract.profit", label: "ProfitDist.sol", group: "contracts", size: 10, desc: "Mudarabah profit split" },
-                { id: "contract.oracle", label: "Oracle.sol", group: "contracts", size: 9, desc: "Price feed aggregator" },
-            ],
-            links: [
-                { source: "main", target: "app.module", type: "imports" },
-                { source: "app.module", target: "auth.module", type: "imports" },
-                { source: "app.module", target: "users.module", type: "imports" },
-                { source: "app.module", target: "deals.module", type: "imports" },
-                { source: "app.module", target: "blockchain.module", type: "imports" },
-                { source: "app.module", target: "escrow.module", type: "imports" },
-                { source: "app.module", target: "investments.module", type: "imports" },
-                { source: "app.module", target: "payments.module", type: "imports" },
-                { source: "app.module", target: "profits.module", type: "imports" },
-                { source: "app.module", target: "ledger.module", type: "imports" },
-                { source: "app.module", target: "oracle.module", type: "imports" },
-                { source: "app.module", target: "farmers.module", type: "imports" },
-                { source: "app.module", target: "farms.module", type: "imports" },
-                { source: "app.module", target: "investors.module", type: "imports" },
-                { source: "app.module", target: "dashboard.module", type: "imports" },
-                { source: "app.module", target: "crops.module", type: "imports" },
-                { source: "app.module", target: "database.module", type: "imports" },
-                { source: "app.module", target: "notifications.module", type: "imports" },
-                { source: "app.module", target: "audit.module", type: "imports" },
-                { source: "app.module", target: "wallets.module", type: "imports" },
-                { source: "app.module", target: "webhooks.module", type: "imports" },
-                { source: "app.module", target: "settlements.module", type: "imports" },
-                { source: "app.module", target: "admin.module", type: "imports" },
-                { source: "auth.module", target: "auth.controller", type: "provides" },
-                { source: "auth.module", target: "auth.service", type: "provides" },
-                { source: "auth.module", target: "jwt-auth.guard", type: "provides" },
-                { source: "auth.service", target: "users.service", type: "calls" },
-                { source: "users.module", target: "users.service", type: "provides" },
-                { source: "users.service", target: "database.module", type: "calls" },
-                { source: "deals.module", target: "deals.controller", type: "provides" },
-                { source: "deals.module", target: "deals.service", type: "provides" },
-                { source: "deals.controller", target: "jwt-auth.guard", type: "guards" },
-                { source: "deals.service", target: "database.module", type: "calls" },
-                { source: "deals.service", target: "blockchain.service", type: "calls" },
-                { source: "deals.service", target: "notifications.module", type: "calls" },
-                { source: "deals.service", target: "ledger.service", type: "calls" },
-                { source: "blockchain.module", target: "blockchain.controller", type: "provides" },
-                { source: "blockchain.module", target: "blockchain.service", type: "provides" },
-                { source: "blockchain.service", target: "contract.registry", type: "calls" },
-                { source: "blockchain.service", target: "contract.factory", type: "calls" },
-                { source: "blockchain.service", target: "contract.escrow", type: "calls" },
-                { source: "blockchain.service", target: "contract.profit", type: "calls" },
-                { source: "blockchain.service", target: "contract.oracle", type: "calls" },
-                { source: "escrow.module", target: "escrow.service", type: "provides" },
-                { source: "escrow.service", target: "blockchain.service", type: "calls" },
-                { source: "escrow.service", target: "contract.escrow", type: "calls" },
-                { source: "investments.module", target: "investments.service", type: "provides" },
-                { source: "investments.service", target: "deals.service", type: "calls" },
-                { source: "investments.service", target: "database.module", type: "calls" },
-                { source: "payments.module", target: "payments.service", type: "provides" },
-                { source: "payments.service", target: "ledger.service", type: "calls" },
-                { source: "profits.module", target: "profits.service", type: "provides" },
-                { source: "profits.service", target: "contract.profit", type: "calls" },
-                { source: "profits.service", target: "ledger.service", type: "calls" },
-                { source: "ledger.module", target: "ledger.service", type: "provides" },
-                { source: "ledger.service", target: "database.module", type: "calls" },
-                { source: "oracle.module", target: "oracle.service", type: "provides" },
-                { source: "oracle.service", target: "contract.oracle", type: "calls" },
-                { source: "oracle.service", target: "redis.stream", type: "calls" },
-                { source: "farmers.module", target: "database.module", type: "calls" },
-                { source: "farms.module", target: "database.module", type: "calls" },
-                { source: "investors.module", target: "database.module", type: "calls" },
-                { source: "rust.indexer", target: "redis.stream", type: "streams" },
-                { source: "rust.indexer", target: "contract.registry", type: "indexes" },
-                { source: "rust.indexer", target: "contract.factory", type: "indexes" },
-                { source: "rust.indexer", target: "contract.escrow", type: "indexes" },
-                { source: "redis.stream", target: "oracle.service", type: "streams" },
-                { source: "redis.stream", target: "notifications.module", type: "streams" },
-                { source: "audit.module", target: "database.module", type: "calls" },
-                { source: "admin.module", target: "users.service", type: "calls" },
-                { source: "admin.module", target: "deals.service", type: "calls" },
-                { source: "webhooks.module", target: "notifications.module", type: "calls" },
-                { source: "settlements.module", target: "profits.service", type: "calls" },
-                { source: "settlements.module", target: "blockchain.service", type: "calls" },
-                { source: "wallets.module", target: "blockchain.service", type: "calls" },
-            ],
-            meta: {
-                totalNodes: 46,
-                totalEdges: 75,
-                groups: {
-                    core: { label: "Core Application", color: "#6366f1" },
-                    auth: { label: "Authentication", color: "#ec4899" },
-                    users: { label: "Users", color: "#8b5cf6" },
-                    deals: { label: "Deals", color: "#10b981" },
-                    blockchain: { label: "Blockchain / EVM", color: "#3b82f6" },
-                    escrow: { label: "Escrow", color: "#06b6d4" },
-                    investments: { label: "Investments", color: "#14b8a6" },
-                    payments: { label: "Payments", color: "#f59e0b" },
-                    profits: { label: "Profits", color: "#84cc16" },
-                    ledger: { label: "Ledger", color: "#a78bfa" },
-                    oracle: { label: "Oracle / IoT", color: "#f97316" },
-                    farmers: { label: "Farmers / Farms", color: "#22c55e" },
-                    investors: { label: "Investors", color: "#0ea5e9" },
-                    analytics: { label: "Dashboard / Analytics", color: "#64748b" },
-                    infra: { label: "Infrastructure", color: "#78716c" },
-                    rust: { label: "Rust Indexer", color: "#ef4444" },
-                    contracts: { label: "Smart Contracts", color: "#7c3aed" },
-                }
-            }
-        };
+    let currentData = defaultData;
+    let selectedNode = null;
+    let pinnedNode = null;
+    let activeFilterGroup = null;
+    let simulation = null;
 
-        let currentData = defaultData;
-        let selectedNode = null;
-        let pinnedNode = null;
-        let activeFilterGroup = null;
-        let simulation = null;
+    const containerEl = document.getElementById("graphContainer");
+    const svgEl = document.getElementById("forceGraphSvg");
+    const tooltipEl = document.getElementById("nodeTooltip");
+    const filterListEl = document.getElementById("domainFilterList");
+    const clearBtn = document.getElementById("clearDomainFilter");
 
-        const containerEl = document.getElementById("graphContainer");
-        const svgEl = document.getElementById("forceGraphSvg");
-        const tooltipEl = document.getElementById("nodeTooltip");
-        const filterListEl = document.getElementById("domainFilterList");
-        const clearBtn = document.getElementById("clearDomainFilter");
-
-        function renderDomainFilters() {
-            if (!filterListEl) return;
-            filterListEl.innerHTML = Object.entries(currentData.meta.groups).map(([key, grp]) => {
-                const count = currentData.nodes.filter(n => n.group === key).length;
-                const isActive = activeFilterGroup === key;
-                return `
+    function renderDomainFilters() {
+      if (!filterListEl) return;
+      filterListEl.innerHTML = Object.entries(currentData.meta.groups).map(([key, grp]) => {
+        const count = currentData.nodes.filter(n => n.group === key).length;
+        const isActive = activeFilterGroup === key;
+        return `
                 <button class="domain-btn ${isActive ? 'is-active' : ''}" data-domain="${key}">
                   <span class="domain-dot" style="background:${grp.color};"></span>
                   <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${grp.label}</span>
                   <span style="opacity:0.6;font-size:10px;margin-left:auto;">${count}</span>
                 </button>`;
-            }).join('');
+      }).join('');
 
-            clearBtn.style.display = activeFilterGroup ? 'inline-block' : 'none';
+      clearBtn.style.display = activeFilterGroup ? 'inline-block' : 'none';
 
-            $$('[data-domain]', filterListEl).forEach(b => {
-                b.addEventListener('click', () => {
-                    const dom = b.dataset.domain;
-                    activeFilterGroup = (activeFilterGroup === dom) ? null : dom;
-                    renderDomainFilters();
-                    applyGroupHighlight();
-                });
-            });
+      $$('[data-domain]', filterListEl).forEach(b => {
+        b.addEventListener('click', () => {
+          const dom = b.dataset.domain;
+          activeFilterGroup = (activeFilterGroup === dom) ? null : dom;
+          renderDomainFilters();
+          applyGroupHighlight();
+        });
+      });
 
-            clearBtn.onclick = () => {
-                activeFilterGroup = null;
-                renderDomainFilters();
-                applyGroupHighlight();
-            };
-        }
+      clearBtn.onclick = () => {
+        activeFilterGroup = null;
+        renderDomainFilters();
+        applyGroupHighlight();
+      };
+    }
 
-        function showTooltip(node, isPinned) {
-            if (!node || !tooltipEl) return;
-            const grp = currentData.meta.groups[node.group] || { label: node.group, color: "#64748b" };
-            tooltipEl.innerHTML = `
+    function showTooltip(node, isPinned) {
+      if (!node || !tooltipEl) return;
+      const grp = currentData.meta.groups[node.group] || { label: node.group, color: "#64748b" };
+      tooltipEl.innerHTML = `
             <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;">
               <div>
                 <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">
@@ -1048,285 +1048,285 @@
               </div>
               ${isPinned ? `<button id="closeTooltipBtn" style="background:none;border:none;color:#94a3b8;cursor:pointer;padding:2px;font-size:12px;">✕</button>` : ''}
             </div>`;
-            tooltipEl.style.display = "block";
-            const closeBtn = document.getElementById("closeTooltipBtn");
-            if (closeBtn) {
-                closeBtn.onclick = () => {
-                    pinnedNode = null;
-                    tooltipEl.style.display = "none";
-                };
-            }
-        }
-
-        function hideTooltip() {
-            if (pinnedNode) return;
-            if (tooltipEl) tooltipEl.style.display = "none";
-        }
-
-        function initD3Graph() {
-            if (!svgEl || !containerEl) return;
-            const d3 = window.d3;
-            if (!d3) return;
-
-            const rect = containerEl.getBoundingClientRect();
-            const width = Math.max(600, rect.width || 900);
-            const height = Math.max(500, rect.height || 620);
-
-            // Clone data so d3 simulation doesn't mutate base objects
-            const nodes = currentData.nodes.map(n => ({ ...n }));
-            const links = currentData.links.map(l => ({ ...l }));
-
-            const svg = d3.select(svgEl);
-            svg.selectAll("*").remove();
-            svg.attr("viewBox", `0 0 ${width} ${height}`);
-
-            const defs = svg.append("defs");
-
-            // Marker arrows
-            Object.entries(currentData.meta.groups).forEach(([, grp]) => {
-                const hex = grp.color.replace("#", "");
-                defs.append("marker")
-                    .attr("id", `arrow-${hex}`)
-                    .attr("viewBox", "0 -4 8 8")
-                    .attr("refX", 18)
-                    .attr("refY", 0)
-                    .attr("markerWidth", 6)
-                    .attr("markerHeight", 6)
-                    .attr("orient", "auto")
-                    .append("path")
-                    .attr("d", "M0,-4L8,0L0,4")
-                    .attr("fill", grp.color)
-                    .attr("opacity", 0.5);
-            });
-
-            // Glow filter
-            const filter = defs.append("filter")
-                .attr("id", "glow")
-                .attr("x", "-30%").attr("y", "-30%")
-                .attr("width", "160%").attr("height", "160%");
-            filter.append("feGaussianBlur").attr("stdDeviation", "3").attr("result", "coloredBlur");
-            const feMerge = filter.append("feMerge");
-            feMerge.append("feMergeNode").attr("in", "coloredBlur");
-            feMerge.append("feMergeNode").attr("in", "SourceGraphic");
-
-            const container = svg.append("g").attr("class", "container");
-
-            // Zoom behavior
-            const zoom = d3.zoom()
-                .scaleExtent([0.15, 4])
-                .on("zoom", (event) => {
-                    container.attr("transform", event.transform);
-                });
-            svg.call(zoom);
-            svg.call(zoom.transform, d3.zoomIdentity.translate(width / 2, height / 2).scale(0.55));
-
-            // Force simulation
-            simulation = d3.forceSimulation(nodes)
-                .force("link", d3.forceLink(links).id(d => d.id).distance(90).strength(0.5))
-                .force("charge", d3.forceManyBody().strength(-320))
-                .force("center", d3.forceCenter(0, 0))
-                .force("collision", d3.forceCollide().radius(d => d.size + 10))
-                .force("x", d3.forceX().strength(0.04))
-                .force("y", d3.forceY().strength(0.04));
-
-            // Links
-            const linkElements = container.append("g")
-                .attr("class", "links")
-                .selectAll("line")
-                .data(links)
-                .join("line")
-                .attr("stroke", d => {
-                    const grp = currentData.meta.groups[d.source.group] || { color: "#64748b" };
-                    return grp.color;
-                })
-                .attr("stroke-opacity", 0.35)
-                .attr("stroke-width", 1.2)
-                .attr("marker-end", d => {
-                    const grp = currentData.meta.groups[d.source.group] || { color: "#64748b" };
-                    return `url(#arrow-${grp.color.replace("#", "")})`;
-                });
-
-            // Node groups
-            const nodeElements = container.append("g")
-                .attr("class", "nodes")
-                .selectAll("g")
-                .data(nodes)
-                .join("g")
-                .attr("class", "node-group")
-                .style("cursor", "pointer")
-                .call(d3.drag()
-                    .on("start", (event, d) => {
-                        if (!event.active) simulation.alphaTarget(0.3).restart();
-                        d.fx = d.x; d.fy = d.y;
-                    })
-                    .on("drag", (event, d) => {
-                        d.fx = event.x; d.fy = event.y;
-                    })
-                    .on("end", (event, d) => {
-                        if (!event.active) simulation.alphaTarget(0);
-                        d.fx = null; d.fy = null;
-                    })
-                );
-
-            // Outer glow ring
-            nodeElements.append("circle")
-                .attr("r", d => d.size + 6)
-                .attr("fill", d => (currentData.meta.groups[d.group]?.color || "#64748b"))
-                .attr("opacity", 0.15)
-                .attr("filter", "url(#glow)");
-
-            // Main node circle
-            nodeElements.append("circle")
-                .attr("r", d => d.size)
-                .attr("fill", d => (currentData.meta.groups[d.group]?.color || "#64748b"))
-                .attr("fill-opacity", 0.85)
-                .attr("stroke", "#ffffff")
-                .attr("stroke-width", 1.5)
-                .attr("stroke-opacity", 0.3);
-
-            // Node Label
-            nodeElements.append("text")
-                .attr("dy", d => d.size + 12)
-                .attr("text-anchor", "middle")
-                .attr("font-size", "9px")
-                .attr("font-family", "system-ui, -apple-system, sans-serif")
-                .attr("font-weight", "600")
-                .attr("fill", "#e2e8f0")
-                .attr("pointer-events", "none")
-                .text(d => d.label);
-
-            // Interaction events
-            nodeElements.on("mouseenter", (event, d) => {
-                if (!pinnedNode) showTooltip(d, false);
-
-                // Highlight connected edges
-                linkElements.transition().duration(150)
-                    .attr("stroke-opacity", l => (l.source.id === d.id || l.target.id === d.id) ? 0.9 : 0.08)
-                    .attr("stroke-width", l => (l.source.id === d.id || l.target.id === d.id) ? 2.5 : 1.2);
-
-                // Dim non-connected nodes
-                nodeElements.transition().duration(150)
-                    .attr("opacity", n => {
-                        if (n.id === d.id) return 1;
-                        const connected = links.some(l => (l.source.id === d.id && l.target.id === n.id) || (l.target.id === d.id && l.source.id === n.id));
-                        return connected ? 0.9 : 0.2;
-                    });
-            });
-
-            nodeElements.on("mouseleave", () => {
-                hideTooltip();
-                if (!activeFilterGroup) {
-                    linkElements.transition().duration(200).attr("stroke-opacity", 0.35).attr("stroke-width", 1.2);
-                    nodeElements.transition().duration(200).attr("opacity", 1);
-                } else {
-                    applyGroupHighlight();
-                }
-            });
-
-            nodeElements.on("click", (event, d) => {
-                if (pinnedNode && pinnedNode.id === d.id) {
-                    pinnedNode = null;
-                    tooltipEl.style.display = "none";
-                } else {
-                    pinnedNode = d;
-                    showTooltip(d, true);
-                }
-            });
-
-            // Tick simulation
-            simulation.on("tick", () => {
-                linkElements
-                    .attr("x1", d => d.source.x)
-                    .attr("y1", d => d.source.y)
-                    .attr("x2", d => d.target.x)
-                    .attr("y2", d => d.target.y);
-
-                nodeElements.attr("transform", d => `translate(${d.x},${d.y})`);
-            });
-        }
-
-        function applyGroupHighlight() {
-            const d3 = window.d3;
-            if (!d3 || !svgEl) return;
-            const svg = d3.select(svgEl);
-            if (!activeFilterGroup) {
-                svg.selectAll(".node-group").transition().duration(200).attr("opacity", 1);
-                svg.selectAll(".links line").transition().duration(200).attr("stroke-opacity", 0.35).attr("stroke-width", 1.2);
-            } else {
-                svg.selectAll(".node-group").transition().duration(200).attr("opacity", d => (d.group === activeFilterGroup ? 1 : 0.15));
-                svg.selectAll(".links line").transition().duration(200).attr("stroke-opacity", l => {
-                    const match = l.source.group === activeFilterGroup || l.target.group === activeFilterGroup;
-                    return match ? 0.75 : 0.05;
-                });
-            }
-        }
-
-        async function fetchLiveGraph() {
-            const spin = document.getElementById("refreshSpinIcon");
-            if (spin) spin.style.animation = "spin 0.8s linear infinite";
-            try {
-                const res = await fetch("/api/graphify");
-                if (res.ok) {
-                    const data = await res.json();
-                    if (data && data.nodes && data.nodes.length) {
-                        currentData = data;
-                        document.getElementById("badgeTotalNodes").textContent = `${data.meta.totalNodes} Modules`;
-                        document.getElementById("badgeTotalEdges").textContent = `${data.meta.totalEdges} Edges`;
-                        document.getElementById("badgeTotalCommunities").textContent = `${Object.keys(data.meta.groups).length} Communities`;
-                        document.getElementById("kpiValNodes").textContent = `${data.meta.totalNodes}`;
-                        document.getElementById("kpiValCommunities").textContent = `${Object.keys(data.meta.groups).length}`;
-                        document.getElementById("kpiValEdges").textContent = `${data.meta.totalEdges}`;
-                    }
-                }
-            } catch (e) {
-                console.log("Using cached topology dataset", e);
-            } finally {
-                document.getElementById("graphLastRefresh").textContent = new Date().toLocaleTimeString();
-                if (spin) spin.style.animation = "";
-                renderDomainFilters();
-                initD3Graph();
-            }
-        }
-
-        renderDomainFilters();
-        initD3Graph();
-
-        const btnRefresh = document.getElementById("btnRefreshGraph");
-        if (btnRefresh) {
-            btnRefresh.onclick = () => {
-                fetchLiveGraph();
-                toast("Graph topology refreshed.");
-            };
-        }
-    };
-
-    /* ----------------------------------------------------------- blockchain */
-    function notifyBlockchainTransaction(tx) {
-        if (!tx) return;
-        if (!tx.txHash) {
-            tx.txHash = '0x' + Array.from({ length: 64 }, () => Math.floor(Math.random() * 16).toString(16)).join('');
-        }
-        tx.blockNumber = tx.blockNumber || (19842000 + Math.floor(Math.random() * 50000));
-        tx.blockchainVerified = true;
-        tx.verifiedEmail = 'binsadikmuhutasim@gmail.com';
-        tx.verifiedSms = '01838213020';
-
-        fetch('/api/v1/notifications/transaction', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                transaction: tx,
-                email: 'binsadikmuhutasim@gmail.com',
-                sms: '01838213020'
-            })
-        }).catch(() => { });
-
-        toast(`⛓️ Tx ${tx.id} confirmed on Base Sepolia | 📧 Email ➔ binsadikmuhutasim@gmail.com | 📱 SMS ➔ 01838213020`);
+      tooltipEl.style.display = "block";
+      const closeBtn = document.getElementById("closeTooltipBtn");
+      if (closeBtn) {
+        closeBtn.onclick = () => {
+          pinnedNode = null;
+          tooltipEl.style.display = "none";
+        };
+      }
     }
 
-    routes.blockchain = function () {
-        const recentTx = S.tx.slice(0, 10);
-        return `
+    function hideTooltip() {
+      if (pinnedNode) return;
+      if (tooltipEl) tooltipEl.style.display = "none";
+    }
+
+    function initD3Graph() {
+      if (!svgEl || !containerEl) return;
+      const d3 = window.d3;
+      if (!d3) return;
+
+      const rect = containerEl.getBoundingClientRect();
+      const width = Math.max(600, rect.width || 900);
+      const height = Math.max(500, rect.height || 620);
+
+      // Clone data so d3 simulation doesn't mutate base objects
+      const nodes = currentData.nodes.map(n => ({ ...n }));
+      const links = currentData.links.map(l => ({ ...l }));
+
+      const svg = d3.select(svgEl);
+      svg.selectAll("*").remove();
+      svg.attr("viewBox", `0 0 ${width} ${height}`);
+
+      const defs = svg.append("defs");
+
+      // Marker arrows
+      Object.entries(currentData.meta.groups).forEach(([, grp]) => {
+        const hex = grp.color.replace("#", "");
+        defs.append("marker")
+          .attr("id", `arrow-${hex}`)
+          .attr("viewBox", "0 -4 8 8")
+          .attr("refX", 18)
+          .attr("refY", 0)
+          .attr("markerWidth", 6)
+          .attr("markerHeight", 6)
+          .attr("orient", "auto")
+          .append("path")
+          .attr("d", "M0,-4L8,0L0,4")
+          .attr("fill", grp.color)
+          .attr("opacity", 0.5);
+      });
+
+      // Glow filter
+      const filter = defs.append("filter")
+        .attr("id", "glow")
+        .attr("x", "-30%").attr("y", "-30%")
+        .attr("width", "160%").attr("height", "160%");
+      filter.append("feGaussianBlur").attr("stdDeviation", "3").attr("result", "coloredBlur");
+      const feMerge = filter.append("feMerge");
+      feMerge.append("feMergeNode").attr("in", "coloredBlur");
+      feMerge.append("feMergeNode").attr("in", "SourceGraphic");
+
+      const container = svg.append("g").attr("class", "container");
+
+      // Zoom behavior
+      const zoom = d3.zoom()
+        .scaleExtent([0.15, 4])
+        .on("zoom", (event) => {
+          container.attr("transform", event.transform);
+        });
+      svg.call(zoom);
+      svg.call(zoom.transform, d3.zoomIdentity.translate(width / 2, height / 2).scale(0.55));
+
+      // Force simulation
+      simulation = d3.forceSimulation(nodes)
+        .force("link", d3.forceLink(links).id(d => d.id).distance(90).strength(0.5))
+        .force("charge", d3.forceManyBody().strength(-320))
+        .force("center", d3.forceCenter(0, 0))
+        .force("collision", d3.forceCollide().radius(d => d.size + 10))
+        .force("x", d3.forceX().strength(0.04))
+        .force("y", d3.forceY().strength(0.04));
+
+      // Links
+      const linkElements = container.append("g")
+        .attr("class", "links")
+        .selectAll("line")
+        .data(links)
+        .join("line")
+        .attr("stroke", d => {
+          const grp = currentData.meta.groups[d.source.group] || { color: "#64748b" };
+          return grp.color;
+        })
+        .attr("stroke-opacity", 0.35)
+        .attr("stroke-width", 1.2)
+        .attr("marker-end", d => {
+          const grp = currentData.meta.groups[d.source.group] || { color: "#64748b" };
+          return `url(#arrow-${grp.color.replace("#", "")})`;
+        });
+
+      // Node groups
+      const nodeElements = container.append("g")
+        .attr("class", "nodes")
+        .selectAll("g")
+        .data(nodes)
+        .join("g")
+        .attr("class", "node-group")
+        .style("cursor", "pointer")
+        .call(d3.drag()
+          .on("start", (event, d) => {
+            if (!event.active) simulation.alphaTarget(0.3).restart();
+            d.fx = d.x; d.fy = d.y;
+          })
+          .on("drag", (event, d) => {
+            d.fx = event.x; d.fy = event.y;
+          })
+          .on("end", (event, d) => {
+            if (!event.active) simulation.alphaTarget(0);
+            d.fx = null; d.fy = null;
+          })
+        );
+
+      // Outer glow ring
+      nodeElements.append("circle")
+        .attr("r", d => d.size + 6)
+        .attr("fill", d => (currentData.meta.groups[d.group]?.color || "#64748b"))
+        .attr("opacity", 0.15)
+        .attr("filter", "url(#glow)");
+
+      // Main node circle
+      nodeElements.append("circle")
+        .attr("r", d => d.size)
+        .attr("fill", d => (currentData.meta.groups[d.group]?.color || "#64748b"))
+        .attr("fill-opacity", 0.85)
+        .attr("stroke", "#ffffff")
+        .attr("stroke-width", 1.5)
+        .attr("stroke-opacity", 0.3);
+
+      // Node Label
+      nodeElements.append("text")
+        .attr("dy", d => d.size + 12)
+        .attr("text-anchor", "middle")
+        .attr("font-size", "9px")
+        .attr("font-family", "system-ui, -apple-system, sans-serif")
+        .attr("font-weight", "600")
+        .attr("fill", "#e2e8f0")
+        .attr("pointer-events", "none")
+        .text(d => d.label);
+
+      // Interaction events
+      nodeElements.on("mouseenter", (event, d) => {
+        if (!pinnedNode) showTooltip(d, false);
+
+        // Highlight connected edges
+        linkElements.transition().duration(150)
+          .attr("stroke-opacity", l => (l.source.id === d.id || l.target.id === d.id) ? 0.9 : 0.08)
+          .attr("stroke-width", l => (l.source.id === d.id || l.target.id === d.id) ? 2.5 : 1.2);
+
+        // Dim non-connected nodes
+        nodeElements.transition().duration(150)
+          .attr("opacity", n => {
+            if (n.id === d.id) return 1;
+            const connected = links.some(l => (l.source.id === d.id && l.target.id === n.id) || (l.target.id === d.id && l.source.id === n.id));
+            return connected ? 0.9 : 0.2;
+          });
+      });
+
+      nodeElements.on("mouseleave", () => {
+        hideTooltip();
+        if (!activeFilterGroup) {
+          linkElements.transition().duration(200).attr("stroke-opacity", 0.35).attr("stroke-width", 1.2);
+          nodeElements.transition().duration(200).attr("opacity", 1);
+        } else {
+          applyGroupHighlight();
+        }
+      });
+
+      nodeElements.on("click", (event, d) => {
+        if (pinnedNode && pinnedNode.id === d.id) {
+          pinnedNode = null;
+          tooltipEl.style.display = "none";
+        } else {
+          pinnedNode = d;
+          showTooltip(d, true);
+        }
+      });
+
+      // Tick simulation
+      simulation.on("tick", () => {
+        linkElements
+          .attr("x1", d => d.source.x)
+          .attr("y1", d => d.source.y)
+          .attr("x2", d => d.target.x)
+          .attr("y2", d => d.target.y);
+
+        nodeElements.attr("transform", d => `translate(${d.x},${d.y})`);
+      });
+    }
+
+    function applyGroupHighlight() {
+      const d3 = window.d3;
+      if (!d3 || !svgEl) return;
+      const svg = d3.select(svgEl);
+      if (!activeFilterGroup) {
+        svg.selectAll(".node-group").transition().duration(200).attr("opacity", 1);
+        svg.selectAll(".links line").transition().duration(200).attr("stroke-opacity", 0.35).attr("stroke-width", 1.2);
+      } else {
+        svg.selectAll(".node-group").transition().duration(200).attr("opacity", d => (d.group === activeFilterGroup ? 1 : 0.15));
+        svg.selectAll(".links line").transition().duration(200).attr("stroke-opacity", l => {
+          const match = l.source.group === activeFilterGroup || l.target.group === activeFilterGroup;
+          return match ? 0.75 : 0.05;
+        });
+      }
+    }
+
+    async function fetchLiveGraph() {
+      const spin = document.getElementById("refreshSpinIcon");
+      if (spin) spin.style.animation = "spin 0.8s linear infinite";
+      try {
+        const res = await fetch("/api/graphify");
+        if (res.ok) {
+          const data = await res.json();
+          if (data && data.nodes && data.nodes.length) {
+            currentData = data;
+            document.getElementById("badgeTotalNodes").textContent = `${data.meta.totalNodes} Modules`;
+            document.getElementById("badgeTotalEdges").textContent = `${data.meta.totalEdges} Edges`;
+            document.getElementById("badgeTotalCommunities").textContent = `${Object.keys(data.meta.groups).length} Communities`;
+            document.getElementById("kpiValNodes").textContent = `${data.meta.totalNodes}`;
+            document.getElementById("kpiValCommunities").textContent = `${Object.keys(data.meta.groups).length}`;
+            document.getElementById("kpiValEdges").textContent = `${data.meta.totalEdges}`;
+          }
+        }
+      } catch (e) {
+        console.log("Using cached topology dataset", e);
+      } finally {
+        document.getElementById("graphLastRefresh").textContent = new Date().toLocaleTimeString();
+        if (spin) spin.style.animation = "";
+        renderDomainFilters();
+        initD3Graph();
+      }
+    }
+
+    renderDomainFilters();
+    initD3Graph();
+
+    const btnRefresh = document.getElementById("btnRefreshGraph");
+    if (btnRefresh) {
+      btnRefresh.onclick = () => {
+        fetchLiveGraph();
+        toast("Graph topology refreshed.");
+      };
+    }
+  };
+
+  /* ----------------------------------------------------------- blockchain */
+  function notifyBlockchainTransaction(tx) {
+    if (!tx) return;
+    if (!tx.txHash) {
+      tx.txHash = '0x' + Array.from({ length: 64 }, () => Math.floor(Math.random() * 16).toString(16)).join('');
+    }
+    tx.blockNumber = tx.blockNumber || (19842000 + Math.floor(Math.random() * 50000));
+    tx.blockchainVerified = true;
+    tx.verifiedEmail = 'binsadikmuhutasim@gmail.com';
+    tx.verifiedSms = '01838213020';
+
+    fetch('/api/v1/notifications/transaction', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        transaction: tx,
+        email: 'binsadikmuhutasim@gmail.com',
+        sms: '01838213020'
+      })
+    }).catch(() => { });
+
+    toast(`⛓️ Tx ${tx.id} confirmed on Base Sepolia | 📧 Email ➔ binsadikmuhutasim@gmail.com | 📱 SMS ➔ 01838213020`);
+  }
+
+  routes.blockchain = function () {
+    const recentTx = S.tx.slice(0, 10);
+    return `
       <div class="pagehead">
         <div>
           <h1 class="h1">Blockchain Escrow &amp; Smart Contracts</h1>
@@ -1443,9 +1443,9 @@
             </thead>
             <tbody>
               ${recentTx.map(t => {
-            const hash = t.txHash || ('0x' + Array.from({ length: 64 }, () => Math.floor(Math.random() * 16).toString(16)).join(''));
-            t.txHash = hash;
-            return `<tr>
+      const hash = t.txHash || ('0x' + Array.from({ length: 64 }, () => Math.floor(Math.random() * 16).toString(16)).join(''));
+      t.txHash = hash;
+      return `<tr>
                   <td><b>${t.id}</b><div class="pcard__meta">${stamp(t.at)}</div></td>
                   <td>${t.type}</td>
                   <td>${esc(t.from)} ➔ ${esc(t.to)}</td>
@@ -1455,52 +1455,52 @@
                   <td><span class="tag tag--active">📱 Delivered</span></td>
                   <td><button class="btn btn--ghost btn--sm" data-txview="${t.id}">Details</button></td>
                 </tr>`;
-        }).join('')}
+    }).join('')}
             </tbody>
           </table>
         </div>
       </div>`;
-    };
+  };
 
-    routes.blockchain.after = function () {
-        const testBtn = document.getElementById("btnTestBlockchainTx");
-        if (testBtn) {
-            testBtn.onclick = async () => {
-                testBtn.setAttribute("disabled", "true");
-                testBtn.textContent = "Broadcasting to Base Sepolia...";
-                try {
-                    const res = await fetch("/api/v1/blockchain/transact", {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({
-                            action: "commitCapital",
-                            amount: 25000,
-                            from: "Muhutasim Bin Sadik",
-                            to: "Base Sepolia Escrow Vault",
-                            method: "bKash Direct",
-                            email: "binsadikmuhutasim@gmail.com",
-                            sms: "01838213020"
-                        })
-                    });
-                    const data = await res.json();
-                    if (data && data.success) {
-                        const newTx = {
-                            id: data.receipt.txId,
-                            at: new Date().toISOString(),
-                            type: 'investment',
-                            from: data.receipt.from,
-                            to: data.receipt.to,
-                            method: data.receipt.method,
-                            amount: data.receipt.amount,
-                            fee: 500,
-                            status: 'complete',
-                            project: 'PRJ-2402',
-                            txHash: data.blockchainTxHash,
-                            blockNumber: data.blockNumber,
-                        };
-                        S.tx.unshift(newTx);
-                        save();
-                        modal("Blockchain Transaction Verified", `
+  routes.blockchain.after = function () {
+    const testBtn = document.getElementById("btnTestBlockchainTx");
+    if (testBtn) {
+      testBtn.onclick = async () => {
+        testBtn.setAttribute("disabled", "true");
+        testBtn.textContent = "Broadcasting to Base Sepolia...";
+        try {
+          const res = await fetch("/api/v1/blockchain/transact", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              action: "commitCapital",
+              amount: 25000,
+              from: "Muhutasim Bin Sadik",
+              to: "Base Sepolia Escrow Vault",
+              method: "bKash Direct",
+              email: "binsadikmuhutasim@gmail.com",
+              sms: "01838213020"
+            })
+          });
+          const data = await res.json();
+          if (data && data.success) {
+            const newTx = {
+              id: data.receipt.txId,
+              at: new Date().toISOString(),
+              type: 'investment',
+              from: data.receipt.from,
+              to: data.receipt.to,
+              method: data.receipt.method,
+              amount: data.receipt.amount,
+              fee: 500,
+              status: 'complete',
+              project: 'PRJ-2402',
+              txHash: data.blockchainTxHash,
+              blockNumber: data.blockNumber,
+            };
+            S.tx.unshift(newTx);
+            save();
+            modal("Blockchain Transaction Verified", `
                           <div style="text-align:center;padding:10px 0;">
                             <span style="font-size:36px;">⛓️</span>
                             <h3 style="margin:8px 0 4px;color:#059669;">Transaction Confirmed on Base Sepolia</h3>
@@ -1515,25 +1515,25 @@
                             <dt>SMS Verification</dt><dd><b style="color:#059669;">✅ Delivered to 01838213020</b></dd>
                           </dl>
                         `);
-                        toast(`✅ Base Sepolia Tx Confirmed! Email sent to binsadikmuhutasim@gmail.com & SMS to 01838213020`);
-                        route();
-                    }
-                } catch (e) {
-                    toast("Transaction simulation failed", true);
-                } finally {
-                    testBtn.removeAttribute("disabled");
-                    testBtn.textContent = "🚀 Execute Test Smart Contract Tx";
-                }
-            };
+            toast(`✅ Base Sepolia Tx Confirmed! Email sent to binsadikmuhutasim@gmail.com & SMS to 01838213020`);
+            route();
+          }
+        } catch (e) {
+          toast("Transaction simulation failed", true);
+        } finally {
+          testBtn.removeAttribute("disabled");
+          testBtn.textContent = "🚀 Execute Test Smart Contract Tx";
         }
+      };
+    }
 
-        const logBtn = document.getElementById("btnViewDispatchLog");
-        if (logBtn) {
-            logBtn.onclick = async () => {
-                try {
-                    const res = await fetch("/api/v1/notifications/verification-log");
-                    const data = await res.json();
-                    modal("Notification Outbox Verification Log", `
+    const logBtn = document.getElementById("btnViewDispatchLog");
+    if (logBtn) {
+      logBtn.onclick = async () => {
+        try {
+          const res = await fetch("/api/v1/notifications/verification-log");
+          const data = await res.json();
+          modal("Notification Outbox Verification Log", `
                       <p class="muted">All verified emails dispatched to <b>binsadikmuhutasim@gmail.com</b> and SMS to <b>01838213020</b>.</p>
                       <div style="max-height:380px;overflow-y:auto;">
                         ${(data.data || []).map(r => `
@@ -1552,55 +1552,55 @@
                         `).join('') || '<p class="muted">No notifications sent yet. Run a transaction to trigger!</p>'}
                       </div>
                     `);
-                } catch (err) {
-                    toast("Failed to load logs", true);
-                }
-            };
+        } catch (err) {
+          toast("Failed to load logs", true);
         }
-    };
-
-    /* ------------------------------------------------------------- actions */
-    function modal(title, body, onOpen) {
-        $('#modalTitle').textContent = title;
-        $('#modalBody').innerHTML = body;
-        $('#modal').hidden = false;
-        if (onOpen) onOpen();
+      };
     }
-    const closeModal = () => { $('#modal').hidden = true; };
-    const P = (id) => S.projects.find((x) => x.id === id);
-    const U = (id) => S.users.find((x) => x.id === id);
+  };
 
-    function on(attr, fn, root) {
-        $$('[data-' + attr + ']', root || document).forEach((b) =>
-            b.addEventListener('click', () => fn(b.dataset[attr], b)));
-    }
+  /* ------------------------------------------------------------- actions */
+  function modal(title, body, onOpen) {
+    $('#modalTitle').textContent = title;
+    $('#modalBody').innerHTML = body;
+    $('#modal').hidden = false;
+    if (onOpen) onOpen();
+  }
+  const closeModal = () => { $('#modal').hidden = true; };
+  const P = (id) => S.projects.find((x) => x.id === id);
+  const U = (id) => S.users.find((x) => x.id === id);
 
-    function bindRowActions() {
-        on('approve', approveProject);
-        on('reject', rejectProject);
-        on('inspect', inspectProject);
-        on('kyc', kycModal);
-        on('user', userModal);
-        on('dsbrelease', releaseDisbursement);
-        on('dsbhold', (id) => {
-            const x = S.disbursements.find((y) => y.id === id);
-            x.status = 'held';
-            log('Held disbursement', x.id, 'Held pending field verification.');
-            alertMsg('Disbursement ' + x.id + ' held by admin.', 'medium');
-            save(); toast('Disbursement held.'); route();
-        });
-        on('release', (id) => {
-            const t = S.tx.find((x) => x.id === id);
-            t.status = 'complete';
-            log('Released held payment', t.id, taka(t.amount) + ' to ' + t.to);
-            notifyBlockchainTransaction(t);
-            save(); toast('Payment released.'); route();
-        });
-        on('txview', (id) => {
-            const t = S.tx.find((x) => x.id === id);
-            const txHash = t.txHash || ('0x' + Array.from({ length: 64 }, () => Math.floor(Math.random() * 16).toString(16)).join(''));
-            t.txHash = txHash;
-            modal('Transaction ' + t.id, `<dl class="kv">
+  function on(attr, fn, root) {
+    $$('[data-' + attr + ']', root || document).forEach((b) =>
+      b.addEventListener('click', () => fn(b.dataset[attr], b)));
+  }
+
+  function bindRowActions() {
+    on('approve', approveProject);
+    on('reject', rejectProject);
+    on('inspect', inspectProject);
+    on('kyc', kycModal);
+    on('user', userModal);
+    on('dsbrelease', releaseDisbursement);
+    on('dsbhold', (id) => {
+      const x = S.disbursements.find((y) => y.id === id);
+      x.status = 'held';
+      log('Held disbursement', x.id, 'Held pending field verification.');
+      alertMsg('Disbursement ' + x.id + ' held by admin.', 'medium');
+      save(); toast('Disbursement held.'); route();
+    });
+    on('release', (id) => {
+      const t = S.tx.find((x) => x.id === id);
+      t.status = 'complete';
+      log('Released held payment', t.id, taka(t.amount) + ' to ' + t.to);
+      notifyBlockchainTransaction(t);
+      save(); toast('Payment released.'); route();
+    });
+    on('txview', (id) => {
+      const t = S.tx.find((x) => x.id === id);
+      const txHash = t.txHash || ('0x' + Array.from({ length: 64 }, () => Math.floor(Math.random() * 16).toString(16)).join(''));
+      t.txHash = txHash;
+      modal('Transaction ' + t.id, `<dl class="kv">
         <dt>Type</dt><dd>${t.type}</dd><dt>When</dt><dd>${stamp(t.at)}</dd>
         <dt>From</dt><dd>${esc(t.from)}</dd><dt>To</dt><dd>${esc(t.to)}</dd>
         <dt>Method</dt><dd>${esc(t.method)}</dd><dt>Amount</dt><dd>${taka(t.amount)}</dd>
@@ -1611,39 +1611,39 @@
         <dt>Email Verification</dt><dd><span style="color:#059669;font-weight:600">✅ Delivered to binsadikmuhutasim@gmail.com</span></dd>
         <dt>SMS Verification</dt><dd><span style="color:#059669;font-weight:600">✅ Delivered to 01838213020</span></dd>
         </dl>`);
-        });
-        on('dismiss', (id) => {
-            S.alerts = S.alerts.filter((a) => a.id !== id);
-            log('Dismissed alert', id, '');
-            save(); paintBell(); toast('Alert dismissed.'); route();
-        });
-        on('escalate', freezeModal);
-        on('resolve', resolveModal);
-        on('claimpay', payClaim);
-        on('claimreject', rejectClaim);
-        on('takedown', (id) => {
-            const p = S.products.find((x) => x.id === id);
-            p.status = 'removed';
-            log('Removed listing', p.id, esc(p.name));
-            save(); toast('Listing taken down.'); route();
-        });
-        on('restore', (id) => {
-            const p = S.products.find((x) => x.id === id);
-            p.status = 'live'; p.reports = 0;
-            log('Restored listing', p.id, esc(p.name));
-            save(); toast('Listing restored.'); route();
-        });
-        on('export', exportCsv);
-    }
+    });
+    on('dismiss', (id) => {
+      S.alerts = S.alerts.filter((a) => a.id !== id);
+      log('Dismissed alert', id, '');
+      save(); paintBell(); toast('Alert dismissed.'); route();
+    });
+    on('escalate', freezeModal);
+    on('resolve', resolveModal);
+    on('claimpay', payClaim);
+    on('claimreject', rejectClaim);
+    on('takedown', (id) => {
+      const p = S.products.find((x) => x.id === id);
+      p.status = 'removed';
+      log('Removed listing', p.id, esc(p.name));
+      save(); toast('Listing taken down.'); route();
+    });
+    on('restore', (id) => {
+      const p = S.products.find((x) => x.id === id);
+      p.status = 'live'; p.reports = 0;
+      log('Restored listing', p.id, esc(p.name));
+      save(); toast('Listing restored.'); route();
+    });
+    on('export', exportCsv);
+  }
 
-    function approveProject(id) {
-        const p = P(id);
-        const owner = U(p.ownerId) || {};
-        const warn = [];
-        if (owner.kyc !== 'verified') warn.push('the owner is not KYC verified');
-        if (!p.docs.length) warn.push('no supporting document is attached');
-        if (p.riskLevel === 'high') warn.push('the risk score is ' + p.risk);
-        modal('Approve ' + p.id, `
+  function approveProject(id) {
+    const p = P(id);
+    const owner = U(p.ownerId) || {};
+    const warn = [];
+    if (owner.kyc !== 'verified') warn.push('the owner is not KYC verified');
+    if (!p.docs.length) warn.push('no supporting document is attached');
+    if (p.riskLevel === 'high') warn.push('the risk score is ' + p.risk);
+    modal('Approve ' + p.id, `
       <p class="muted">Approving publishes this listing to every investor immediately.</p>
       <dl class="kv" style="margin-bottom:14px">
         <dt>Project</dt><dd>${esc(p.title)}</dd>
@@ -1655,17 +1655,17 @@
       <label class="field"><span class="field__label">Note for the audit log</span>
         <input id="apNote" placeholder="Optional"></label>
       <button class="btn btn--primary btn--block" id="apGo">Approve and publish</button>`, () => {
-            $('#apGo').addEventListener('click', () => {
-                p.status = 'funding';
-                log('Approved project', p.id, $('#apNote').value.trim() || 'Published to investors.');
-                save(); closeModal(); toast(p.id + ' approved and published.'); route();
-            });
-        });
-    }
+      $('#apGo').addEventListener('click', () => {
+        p.status = 'funding';
+        log('Approved project', p.id, $('#apNote').value.trim() || 'Published to investors.');
+        save(); closeModal(); toast(p.id + ' approved and published.'); route();
+      });
+    });
+  }
 
-    function rejectProject(id) {
-        const p = P(id);
-        modal('Reject ' + p.id, `
+  function rejectProject(id) {
+    const p = P(id);
+    modal('Reject ' + p.id, `
       <p class="muted">The farmer sees your reason and can fix and resubmit.</p>
       <label class="field"><span class="field__label">Reason</span>
         <select id="rjReason">
@@ -1680,22 +1680,22 @@
         <textarea id="rjNote" placeholder="Be specific — this is the only guidance they get."></textarea>
         <span class="field__error" data-for="rjNote"></span></label>
       <button class="btn btn--danger btn--block" id="rjGo">Reject listing</button>`, () => {
-            $('#rjGo').addEventListener('click', () => {
-                clearErrors($('#modalBody'));
-                if ($('#rjNote').value.trim().length < 12) { setError('rjNote', 'Write at least a sentence of guidance.'); return; }
-                p.status = 'rejected';
-                p.note = $('#rjReason').value + ' — ' + $('#rjNote').value.trim();
-                log('Rejected project', p.id, p.note);
-                save(); closeModal(); toast(p.id + ' rejected.'); route();
-            });
-        });
-    }
+      $('#rjGo').addEventListener('click', () => {
+        clearErrors($('#modalBody'));
+        if ($('#rjNote').value.trim().length < 12) { setError('rjNote', 'Write at least a sentence of guidance.'); return; }
+        p.status = 'rejected';
+        p.note = $('#rjReason').value + ' — ' + $('#rjNote').value.trim();
+        log('Rejected project', p.id, p.note);
+        save(); closeModal(); toast(p.id + ' rejected.'); route();
+      });
+    });
+  }
 
-    function inspectProject(id) {
-        const p = P(id);
-        const owner = U(p.ownerId) || {};
-        const money = S.tx.filter((t) => t.project === p.id);
-        modal(p.id + ' — ' + p.title, `
+  function inspectProject(id) {
+    const p = P(id);
+    const owner = U(p.ownerId) || {};
+    const money = S.tx.filter((t) => t.project === p.id);
+    modal(p.id + ' — ' + p.title, `
       <dl class="kv" style="margin-bottom:14px">
         <dt>Category</dt><dd>${CAT[p.category]} ${p.category}</dd>
         <dt>Owner</dt><dd>${esc(p.owner)} · ${owner.kyc || 'unknown'} · ${owner.status || ''}</dd>
@@ -1718,23 +1718,23 @@
           <button class="btn btn--danger btn--sm" data-reject="${p.id}">Reject</button>` : ''}
         ${['funding', 'active'].includes(p.status) ? `<button class="btn btn--danger btn--sm" data-suspendp="${p.id}">Suspend project</button>` : ''}
       </div>`, () => {
-            const box = $('#modalBody');
-            on('suspendp', (pid) => {
-                const pr = P(pid);
-                pr.status = 'rejected';
-                pr.note = 'Suspended by admin after publication.';
-                log('Suspended project', pr.id, 'Removed from the investor feed.');
-                alertMsg(pr.id + ' suspended by admin.', 'medium');
-                save(); closeModal(); toast('Project suspended.'); route();
-            }, box);
-            on('approve', (pid) => { closeModal(); approveProject(pid); }, box);
-            on('reject', (pid) => { closeModal(); rejectProject(pid); }, box);
-        });
-    }
+      const box = $('#modalBody');
+      on('suspendp', (pid) => {
+        const pr = P(pid);
+        pr.status = 'rejected';
+        pr.note = 'Suspended by admin after publication.';
+        log('Suspended project', pr.id, 'Removed from the investor feed.');
+        alertMsg(pr.id + ' suspended by admin.', 'medium');
+        save(); closeModal(); toast('Project suspended.'); route();
+      }, box);
+      on('approve', (pid) => { closeModal(); approveProject(pid); }, box);
+      on('reject', (pid) => { closeModal(); rejectProject(pid); }, box);
+    });
+  }
 
-    function kycModal(id) {
-        const u = U(id);
-        modal('KYC review — ' + u.name, `
+  function kycModal(id) {
+    const u = U(id);
+    modal('KYC review — ' + u.name, `
       <p class="muted">Check the NID photo against the name and phone on the account.</p>
       <dl class="kv" style="margin-bottom:14px">
         <dt>Name</dt><dd>${esc(u.name)}</dd><dt>Role</dt><dd>${esc(u.role)}</dd>
@@ -1746,24 +1746,24 @@
       <div class="row">
         <button class="btn btn--danger" id="kyNo">Reject</button>
         <button class="btn btn--primary" id="kyYes">Verify account</button></div>`, () => {
-            $('#kyYes').addEventListener('click', () => {
-                u.kyc = 'verified';
-                log('Verified user', u.id, $('#kyNote').value.trim() || 'NID matched.');
-                save(); closeModal(); toast(u.name + ' is verified.'); route();
-            });
-            $('#kyNo').addEventListener('click', () => {
-                u.kyc = 'rejected';
-                log('Rejected KYC', u.id, $('#kyNote').value.trim() || 'Document did not match.');
-                save(); closeModal(); toast('KYC rejected.', true); route();
-            });
-        });
-    }
+      $('#kyYes').addEventListener('click', () => {
+        u.kyc = 'verified';
+        log('Verified user', u.id, $('#kyNote').value.trim() || 'NID matched.');
+        save(); closeModal(); toast(u.name + ' is verified.'); route();
+      });
+      $('#kyNo').addEventListener('click', () => {
+        u.kyc = 'rejected';
+        log('Rejected KYC', u.id, $('#kyNote').value.trim() || 'Document did not match.');
+        save(); closeModal(); toast('KYC rejected.', true); route();
+      });
+    });
+  }
 
-    function userModal(id) {
-        const u = U(id);
-        const own = S.projects.filter((p) => p.ownerId === u.id);
-        const money = S.tx.filter((t) => t.from === u.name || t.to === u.name);
-        modal(u.name, `
+  function userModal(id) {
+    const u = U(id);
+    const own = S.projects.filter((p) => p.ownerId === u.id);
+    const money = S.tx.filter((t) => t.from === u.name || t.to === u.name);
+    modal(u.name, `
       <dl class="kv" style="margin-bottom:14px">
         <dt>User ID</dt><dd>${u.id}</dd><dt>Role</dt><dd>${esc(u.role)}</dd>
         <dt>Phone</dt><dd>${esc(u.phone)}</dd><dt>District</dt><dd>${esc(u.district)}</dd>
@@ -1773,33 +1773,33 @@
         ${u.invested ? `<dt>Invested</dt><dd>${taka(u.invested)}</dd>` : ''}
         ${u.visits ? `<dt>Field visits</dt><dd>${u.visits}</dd>` : ''}</dl>
       ${own.length ? `<h4 class="h3">Projects</h4><ul class="audit">${own.map((p) =>
-            `<li><time>${nice(p.createdAt)}</time><div><b>${esc(p.title)}</b> ${p.status} · ${taka(p.goal)}</div></li>`).join('')}</ul>` : ''}
+      `<li><time>${nice(p.createdAt)}</time><div><b>${esc(p.title)}</b> ${p.status} · ${taka(p.goal)}</div></li>`).join('')}</ul>` : ''}
       <h4 class="h3" style="margin-top:14px">Money</h4>
       ${money.length ? txTable(money.slice(0, 6), true) : '<p class="muted">No transactions.</p>'}
       <div class="row" style="margin-top:14px">
         ${u.status === 'active'
-                ? `<button class="btn btn--danger btn--sm" id="suspU">Suspend account</button>`
-                : `<button class="btn btn--primary btn--sm" id="restU">Restore account</button>`}
+        ? `<button class="btn btn--danger btn--sm" id="suspU">Suspend account</button>`
+        : `<button class="btn btn--primary btn--sm" id="restU">Restore account</button>`}
       </div>`, () => {
-            const s = $('#suspU'), r = $('#restU');
-            if (s) s.addEventListener('click', () => {
-                u.status = 'suspended'; u.flagged = true;
-                log('Suspended user', u.id, 'Account frozen by admin.');
-                alertMsg(u.name + ' was suspended.', 'medium');
-                save(); closeModal(); toast('Account suspended.', true); route();
-            });
-            if (r) r.addEventListener('click', () => {
-                u.status = 'active'; u.flagged = false;
-                log('Restored user', u.id, 'Account reinstated.');
-                save(); closeModal(); toast('Account restored.'); route();
-            });
-        });
-    }
+      const s = $('#suspU'), r = $('#restU');
+      if (s) s.addEventListener('click', () => {
+        u.status = 'suspended'; u.flagged = true;
+        log('Suspended user', u.id, 'Account frozen by admin.');
+        alertMsg(u.name + ' was suspended.', 'medium');
+        save(); closeModal(); toast('Account suspended.', true); route();
+      });
+      if (r) r.addEventListener('click', () => {
+        u.status = 'active'; u.flagged = false;
+        log('Restored user', u.id, 'Account reinstated.');
+        save(); closeModal(); toast('Account restored.'); route();
+      });
+    });
+  }
 
-    function releaseDisbursement(id) {
-        const x = S.disbursements.find((y) => y.id === id);
-        const p = P(x.project);
-        modal('Release ' + taka(x.amount), `
+  function releaseDisbursement(id) {
+    const x = S.disbursements.find((y) => y.id === id);
+    const p = P(x.project);
+    modal('Release ' + taka(x.amount), `
       <p class="muted">Money leaves escrow and reaches the farmer's wallet immediately.</p>
       <dl class="kv" style="margin-bottom:14px">
         <dt>Project</dt><dd>${esc(x.title)} (${x.project})</dd>
@@ -1813,27 +1813,27 @@
       <label class="field"><span class="field__label">Send via</span>
         <select id="dsMethod"><option>bKash</option><option>Nagad</option><option>Bank transfer</option></select></label>
       <button class="btn btn--primary btn--block" id="dsGo">Release funds</button>`, () => {
-            $('#dsGo').addEventListener('click', () => {
-                const fee = Math.round(x.amount * 0.02);
-                const net = x.amount - fee;
-                x.status = 'released';
-                if (p) { p.escrow = Math.max(0, p.escrow - x.amount); p.disbursed += net; }
-                S.disbursements = S.disbursements.filter((y) => y.id !== x.id);
-                S.tx.unshift({
-                    id: uid('TXN'), at: new Date().toISOString(), type: 'disbursement',
-                    from: 'Escrow — ' + x.project, to: x.farmer, method: $('#dsMethod').value,
-                    amount: net, fee, status: 'complete', project: x.project
-                });
-                log('Released disbursement', x.id, taka(net) + ' to ' + x.farmer +
-                    (x.agentVerified ? '' : ' (no field verification)'));
-                save(); closeModal(); toast('Funds released.'); route();
-            });
+      $('#dsGo').addEventListener('click', () => {
+        const fee = Math.round(x.amount * 0.02);
+        const net = x.amount - fee;
+        x.status = 'released';
+        if (p) { p.escrow = Math.max(0, p.escrow - x.amount); p.disbursed += net; }
+        S.disbursements = S.disbursements.filter((y) => y.id !== x.id);
+        S.tx.unshift({
+          id: uid('TXN'), at: new Date().toISOString(), type: 'disbursement',
+          from: 'Escrow — ' + x.project, to: x.farmer, method: $('#dsMethod').value,
+          amount: net, fee, status: 'complete', project: x.project
         });
-    }
+        log('Released disbursement', x.id, taka(net) + ' to ' + x.farmer +
+          (x.agentVerified ? '' : ' (no field verification)'));
+        save(); closeModal(); toast('Funds released.'); route();
+      });
+    });
+  }
 
-    function freezeModal(alertId) {
-        const a = S.alerts.find((x) => x.id === alertId);
-        modal('Freeze an account', `
+  function freezeModal(alertId) {
+    const a = S.alerts.find((x) => x.id === alertId);
+    modal('Freeze an account', `
       <p class="muted">${esc(a.text)}</p>
       <label class="field"><span class="field__label">Account to freeze</span>
         <select id="fzUser">${S.users.map((u) => `<option value="${u.id}">${esc(u.name)} — ${u.role}</option>`).join('')}</select></label>
@@ -1841,23 +1841,23 @@
         <textarea id="fzNote" placeholder="What the signal was and why freezing is proportionate."></textarea>
         <span class="field__error" data-for="fzNote"></span></label>
       <button class="btn btn--danger btn--block" id="fzGo">Freeze account and hold payouts</button>`, () => {
-            $('#fzGo').addEventListener('click', () => {
-                clearErrors($('#modalBody'));
-                if ($('#fzNote').value.trim().length < 12) { setError('fzNote', 'Record why — this is a serious action.'); return; }
-                const u = U($('#fzUser').value);
-                u.status = 'suspended'; u.flagged = true;
-                S.tx.filter((t) => t.from === u.name && t.type === 'withdrawal' && t.status !== 'complete')
-                    .forEach((t) => { t.status = 'held'; });
-                a.read = true;
-                log('Froze account', u.id, $('#fzNote').value.trim());
-                save(); closeModal(); toast(u.name + ' frozen, payouts held.', true); route();
-            });
-        });
-    }
+      $('#fzGo').addEventListener('click', () => {
+        clearErrors($('#modalBody'));
+        if ($('#fzNote').value.trim().length < 12) { setError('fzNote', 'Record why — this is a serious action.'); return; }
+        const u = U($('#fzUser').value);
+        u.status = 'suspended'; u.flagged = true;
+        S.tx.filter((t) => t.from === u.name && t.type === 'withdrawal' && t.status !== 'complete')
+          .forEach((t) => { t.status = 'held'; });
+        a.read = true;
+        log('Froze account', u.id, $('#fzNote').value.trim());
+        save(); closeModal(); toast(u.name + ' frozen, payouts held.', true); route();
+      });
+    });
+  }
 
-    function resolveModal(id) {
-        const x = S.disputes.find((y) => y.id === id);
-        modal('Resolve ' + x.id, `
+  function resolveModal(id) {
+    const x = S.disputes.find((y) => y.id === id);
+    modal('Resolve ' + x.id, `
       <p class="muted">${esc(x.subject)} — ${esc(x.raisedBy)} against ${esc(x.against)}</p>
       <label class="field"><span class="field__label">Outcome</span>
         <select id="dsOut">
@@ -1870,20 +1870,20 @@
       <label class="field"><span class="field__label">What you decided and why</span>
         <textarea id="dsNote"></textarea><span class="field__error" data-for="dsNote"></span></label>
       <button class="btn btn--primary btn--block" id="dsRes">Close dispute</button>`, () => {
-            $('#dsRes').addEventListener('click', () => {
-                clearErrors($('#modalBody'));
-                if ($('#dsNote').value.trim().length < 12) { setError('dsNote', 'Both parties see this. Write a proper explanation.'); return; }
-                x.status = 'resolved';
-                x.resolution = $('#dsOut').value + ' — ' + $('#dsNote').value.trim();
-                log('Resolved dispute', x.id, x.resolution);
-                save(); closeModal(); toast('Dispute closed.'); route();
-            });
-        });
-    }
+      $('#dsRes').addEventListener('click', () => {
+        clearErrors($('#modalBody'));
+        if ($('#dsNote').value.trim().length < 12) { setError('dsNote', 'Both parties see this. Write a proper explanation.'); return; }
+        x.status = 'resolved';
+        x.resolution = $('#dsOut').value + ' — ' + $('#dsNote').value.trim();
+        log('Resolved dispute', x.id, x.resolution);
+        save(); closeModal(); toast('Dispute closed.'); route();
+      });
+    });
+  }
 
-    function payClaim(id) {
-        const c = S.claims.find((x) => x.id === id);
-        modal('Approve claim ' + c.id, `
+  function payClaim(id) {
+    const c = S.claims.find((x) => x.id === id);
+    modal('Approve claim ' + c.id, `
       <dl class="kv" style="margin-bottom:14px">
         <dt>Project</dt><dd>${esc(c.title)}</dd><dt>Farmer</dt><dd>${esc(c.farmer)}</dd>
         <dt>Cause</dt><dd>${esc(c.reason)}</dd><dt>Payout</dt><dd>${taka(c.amount)}</dd>
@@ -1891,139 +1891,139 @@
       <label class="field"><span class="field__label">Assessor note</span>
         <input id="clNote" placeholder="Optional"></label>
       <button class="btn btn--primary btn--block" id="clGo">Pay ${taka(c.amount)} from the pool</button>`, () => {
-            $('#clGo').addEventListener('click', () => {
-                c.status = 'paid';
-                S.tx.unshift({
-                    id: uid('TXN'), at: new Date().toISOString(), type: 'claim',
-                    from: 'Insurance pool', to: c.farmer, method: 'Bank transfer',
-                    amount: c.amount, fee: 0, status: 'complete', project: c.project
-                });
-                log('Approved claim', c.id, taka(c.amount) + ' paid — ' + ($('#clNote').value.trim() || c.reason));
-                save(); closeModal(); toast('Claim paid.'); route();
-            });
+      $('#clGo').addEventListener('click', () => {
+        c.status = 'paid';
+        S.tx.unshift({
+          id: uid('TXN'), at: new Date().toISOString(), type: 'claim',
+          from: 'Insurance pool', to: c.farmer, method: 'Bank transfer',
+          amount: c.amount, fee: 0, status: 'complete', project: c.project
         });
-    }
+        log('Approved claim', c.id, taka(c.amount) + ' paid — ' + ($('#clNote').value.trim() || c.reason));
+        save(); closeModal(); toast('Claim paid.'); route();
+      });
+    });
+  }
 
-    function rejectClaim(id) {
-        const c = S.claims.find((x) => x.id === id);
-        modal('Reject claim ' + c.id, `
+  function rejectClaim(id) {
+    const c = S.claims.find((x) => x.id === id);
+    modal('Reject claim ' + c.id, `
       <label class="field"><span class="field__label">Why the claim fails</span>
         <textarea id="crNote" placeholder="The farmer sees this and can appeal once."></textarea>
         <span class="field__error" data-for="crNote"></span></label>
       <button class="btn btn--danger btn--block" id="crGo">Reject claim</button>`, () => {
-            $('#crGo').addEventListener('click', () => {
-                clearErrors($('#modalBody'));
-                if ($('#crNote').value.trim().length < 12) { setError('crNote', 'Give a reason the farmer can act on.'); return; }
-                c.status = 'rejected';
-                log('Rejected claim', c.id, $('#crNote').value.trim());
-                save(); closeModal(); toast('Claim rejected.', true); route();
-            });
-        });
-    }
+      $('#crGo').addEventListener('click', () => {
+        clearErrors($('#modalBody'));
+        if ($('#crNote').value.trim().length < 12) { setError('crNote', 'Give a reason the farmer can act on.'); return; }
+        c.status = 'rejected';
+        log('Rejected claim', c.id, $('#crNote').value.trim());
+        save(); closeModal(); toast('Claim rejected.', true); route();
+      });
+    });
+  }
 
-    /* ----------------------------------------------------------- CSV export */
-    function exportCsv(kind) {
-        const sets = {
-            projects: {
-                head: ['id', 'title', 'owner', 'category', 'district', 'goal', 'raised', 'risk', 'status'],
-                rows: S.projects.map((p) => [p.id, p.title, p.owner, p.category, p.district, p.goal, p.raised, p.risk, p.status])
-            },
-            users: {
-                head: ['id', 'name', 'role', 'phone', 'district', 'kyc', 'status', 'joined'],
-                rows: S.users.map((u) => [u.id, u.name, u.role, u.phone, u.district, u.kyc, u.status, u.joined.slice(0, 10)])
-            },
-            transactions: {
-                head: ['id', 'date', 'type', 'from', 'to', 'method', 'amount', 'fee', 'status', 'project'],
-                rows: S.tx.map((t) => [t.id, t.at.slice(0, 10), t.type, t.from, t.to, t.method, t.amount, t.fee || 0, t.status, t.project])
-            }
-        };
-        const set = sets[kind];
-        if (!set) return;
-        const csv = [set.head, ...set.rows]
-            .map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n');
-        log('Exported report', kind, set.rows.length + ' rows');
-        save();
-        try {
-            const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = 'grambandhan-' + kind + '-' + new Date().toISOString().slice(0, 10) + '.csv';
-            document.body.appendChild(a); a.click(); a.remove();
-            setTimeout(() => URL.revokeObjectURL(url), 1000);
-            toast(kind + ' report downloaded.');
-        } catch (e) {
-            modal('Report — ' + kind, `<p class="muted">Downloads are blocked here. Copy the CSV below.</p>
+  /* ----------------------------------------------------------- CSV export */
+  function exportCsv(kind) {
+    const sets = {
+      projects: {
+        head: ['id', 'title', 'owner', 'category', 'district', 'goal', 'raised', 'risk', 'status'],
+        rows: S.projects.map((p) => [p.id, p.title, p.owner, p.category, p.district, p.goal, p.raised, p.risk, p.status])
+      },
+      users: {
+        head: ['id', 'name', 'role', 'phone', 'district', 'kyc', 'status', 'joined'],
+        rows: S.users.map((u) => [u.id, u.name, u.role, u.phone, u.district, u.kyc, u.status, u.joined.slice(0, 10)])
+      },
+      transactions: {
+        head: ['id', 'date', 'type', 'from', 'to', 'method', 'amount', 'fee', 'status', 'project'],
+        rows: S.tx.map((t) => [t.id, t.at.slice(0, 10), t.type, t.from, t.to, t.method, t.amount, t.fee || 0, t.status, t.project])
+      }
+    };
+    const set = sets[kind];
+    if (!set) return;
+    const csv = [set.head, ...set.rows]
+      .map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n');
+    log('Exported report', kind, set.rows.length + ' rows');
+    save();
+    try {
+      const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'grambandhan-' + kind + '-' + new Date().toISOString().slice(0, 10) + '.csv';
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      toast(kind + ' report downloaded.');
+    } catch (e) {
+      modal('Report — ' + kind, `<p class="muted">Downloads are blocked here. Copy the CSV below.</p>
         <textarea class="inp" rows="12" readonly>${esc(csv)}</textarea>`);
-        }
     }
+  }
 
-    /* ------------------------------------------------------- global search */
-    function globalSearch(q) {
-        q = q.trim().toLowerCase();
-        if (q.length < 2) return;
-        const hits = [];
-        S.projects.filter((p) => (p.id + p.title + p.owner).toLowerCase().includes(q))
-            .forEach((p) => hits.push(['Project', p.title, p.id, () => inspectProject(p.id)]));
-        S.users.filter((u) => (u.id + u.name + u.phone).toLowerCase().includes(q))
-            .forEach((u) => hits.push(['User', u.name, u.id, () => userModal(u.id)]));
-        S.tx.filter((t) => (t.id + t.from + t.to).toLowerCase().includes(q))
-            .forEach((t) => hits.push(['Transaction', t.type + ' ' + taka(t.amount), t.id, null]));
-        modal('Search results for "' + q + '"', hits.length
-            ? `<ul class="audit">${hits.slice(0, 20).map((h, i) => `<li>
+  /* ------------------------------------------------------- global search */
+  function globalSearch(q) {
+    q = q.trim().toLowerCase();
+    if (q.length < 2) return;
+    const hits = [];
+    S.projects.filter((p) => (p.id + p.title + p.owner).toLowerCase().includes(q))
+      .forEach((p) => hits.push(['Project', p.title, p.id, () => inspectProject(p.id)]));
+    S.users.filter((u) => (u.id + u.name + u.phone).toLowerCase().includes(q))
+      .forEach((u) => hits.push(['User', u.name, u.id, () => userModal(u.id)]));
+    S.tx.filter((t) => (t.id + t.from + t.to).toLowerCase().includes(q))
+      .forEach((t) => hits.push(['Transaction', t.type + ' ' + taka(t.amount), t.id, null]));
+    modal('Search results for "' + q + '"', hits.length
+      ? `<ul class="audit">${hits.slice(0, 20).map((h, i) => `<li>
           <time>${h[0]}</time><div><b>${esc(h[1])}</b> <span class="pcard__meta">${h[2]}</span>
           ${h[3] ? `<button class="link" data-hit="${i}" style="margin-left:8px">Open</button>` : ''}</div></li>`).join('')}</ul>`
-            : '<p class="muted">Nothing matched. Try an ID, a name or a phone number.</p>', () => {
-                $$('[data-hit]').forEach((b) => b.addEventListener('click', () => {
-                    const fn = hits[+b.dataset.hit][3];
-                    closeModal(); if (fn) fn();
-                }));
-            });
+      : '<p class="muted">Nothing matched. Try an ID, a name or a phone number.</p>', () => {
+        $$('[data-hit]').forEach((b) => b.addEventListener('click', () => {
+          const fn = hits[+b.dataset.hit][3];
+          closeModal(); if (fn) fn();
+        }));
+      });
+  }
+
+  /* ----------------------------------------------------------------- boot */
+  function boot() {
+    try {
+      const t = localStorage.getItem(KEY + '.theme');
+      if (t) document.documentElement.setAttribute('data-theme', t);
+    } catch (e) { }
+    bindLogin();
+    if (!S) {
+      S = seed();
+      save();
     }
 
-    /* ----------------------------------------------------------------- boot */
-    function boot() {
-        try {
-            const t = localStorage.getItem(KEY + '.theme');
-            if (t) document.documentElement.setAttribute('data-theme', t);
-        } catch (e) { }
-        bindLogin();
-        if (!S) {
-            S = seed();
-            save();
-        }
+    $('#menuBtn').addEventListener('click', () => $('#rail').classList.toggle('is-open'));
+    $('#bellBtn').addEventListener('click', () => { $('#notifPanel').hidden = !$('#notifPanel').hidden; });
+    $('#notifClose').addEventListener('click', () => { $('#notifPanel').hidden = true; });
+    $('#notifClear').addEventListener('click', () => {
+      S.alerts.forEach((a) => { a.read = true; });
+      save(); paintBell(); paintBadges(); toast('Alerts marked as read.');
+    });
+    $('#logoutBtn').addEventListener('click', () => {
+      try { localStorage.removeItem('grambandhan_admin_sso'); } catch (e) { }
+      $('#app').classList.add('is-hidden');
+      $('#authScreen').classList.remove('is-hidden');
+      $('#adOtp').value = '';
+    });
+    $('#globalSearch').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') globalSearch(e.target.value);
+    });
+    $('#modalClose').addEventListener('click', closeModal);
+    $('#modal').addEventListener('click', (e) => { if (e.target.id === 'modal') closeModal(); });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') { closeModal(); $('#notifPanel').hidden = true; }
+    });
+    window.addEventListener('hashchange', () => { if (S) route(); });
 
-        $('#menuBtn').addEventListener('click', () => $('#rail').classList.toggle('is-open'));
-        $('#bellBtn').addEventListener('click', () => { $('#notifPanel').hidden = !$('#notifPanel').hidden; });
-        $('#notifClose').addEventListener('click', () => { $('#notifPanel').hidden = true; });
-        $('#notifClear').addEventListener('click', () => {
-            S.alerts.forEach((a) => { a.read = true; });
-            save(); paintBell(); paintBadges(); toast('Alerts marked as read.');
-        });
-        $('#logoutBtn').addEventListener('click', () => {
-            try { localStorage.removeItem('grambandhan_admin_sso'); } catch (e) { }
-            $('#app').classList.add('is-hidden');
-            $('#authScreen').classList.remove('is-hidden');
-            $('#adOtp').value = '';
-        });
-        $('#globalSearch').addEventListener('keydown', (e) => {
-            if (e.key === 'Enter') globalSearch(e.target.value);
-        });
-        $('#modalClose').addEventListener('click', closeModal);
-        $('#modal').addEventListener('click', (e) => { if (e.target.id === 'modal') closeModal(); });
-        document.addEventListener('keydown', (e) => {
-            if (e.key === 'Escape') { closeModal(); $('#notifPanel').hidden = true; }
-        });
-        window.addEventListener('hashchange', () => { if (S) route(); });
-
-        const isSso = location.search.includes('sso=1') || localStorage.getItem('grambandhan_admin_sso') === 'true';
-        if (isSso || (S && S.admin)) {
-            enterApp();
-        }
+    const isSso = location.search.includes('sso=1') || localStorage.getItem('grambandhan_admin_sso') === 'true';
+    if (isSso || (S && S.admin)) {
+      enterApp();
     }
+  }
 
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', boot);
-    } else {
-        boot();
-    }
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', boot);
+  } else {
+    boot();
+  }
 })();
