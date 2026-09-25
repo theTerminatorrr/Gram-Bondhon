@@ -1,451 +1,447 @@
 // @ts-nocheck
 (function () {
-    'use strict';
+  'use strict';
 
-    /* ---------------------------------------------------------------- utils */
-    const $ = (s, r = document) => r.querySelector(s);
-    const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
-    const KEY = 'grambandhan.farmer.v1';
-    const uid = (p) => p + '-' + Math.random().toString(36).slice(2, 8).toUpperCase();
-    const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) =>
-        ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-    const taka = (n) => '৳' + Number(n || 0).toLocaleString('en-IN');
-    const pct = (a, b) => (!b ? 0 : Math.min(100, Math.round((a / b) * 100)));
-    const today = () => new Date().toISOString().slice(0, 10);
-    const nice = (d) => new Date(d).toLocaleDateString('en-GB',
-        { day: 'numeric', month: 'short', year: 'numeric' });
-    const ago = (d) => {
-        const m = Math.round((Date.now() - new Date(d)) / 60000);
-        if (m < 60) return m + ' min ago';
-        if (m < 1440) return Math.round(m / 60) + ' hr ago';
-        return Math.round(m / 1440) + ' d ago';
-    };
+  const $ = (s, r = document) => r.querySelector(s);
+  const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
+  const KEY = 'grambandhan.farmer.v1';
+  const uid = (p) => p + '-' + Math.random().toString(36).slice(2, 8).toUpperCase();
+  const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) =>
+    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const taka = (n) => '৳' + Number(n || 0).toLocaleString('en-IN');
+  const pct = (a, b) => (!b ? 0 : Math.min(100, Math.round((a / b) * 100)));
+  const today = () => new Date().toISOString().slice(0, 10);
+  const nice = (d) => new Date(d).toLocaleDateString('en-GB',
+    { day: 'numeric', month: 'short', year: 'numeric' });
+  const ago = (d) => {
+    const m = Math.round((Date.now() - new Date(d)) / 60000);
+    if (m < 60) return m + ' min ago';
+    if (m < 1440) return Math.round(m / 60) + ' hr ago';
+    return Math.round(m / 1440) + ' d ago';
+  };
 
-    const DISTRICTS = ['Bogura', 'Rangpur', 'Dinajpur', 'Jessore', 'Khulna', 'Satkhira',
-        'Comilla', 'Mymensingh', 'Rajshahi', 'Sylhet', 'Barishal', 'Munshiganj',
-        'Jamalpur', 'Chuadanga', 'Sirajganj', 'Tangail'];
+  const DISTRICTS = ['Bogura', 'Rangpur', 'Dinajpur', 'Jessore', 'Khulna', 'Satkhira',
+    'Comilla', 'Mymensingh', 'Rajshahi', 'Sylhet', 'Barishal', 'Munshiganj',
+    'Jamalpur', 'Chuadanga', 'Sirajganj', 'Tangail'];
 
-    const CATEGORIES = {
-        Crop: { icon: '🌾', base: 26 },
-        Vegetable: { icon: '🥬', base: 24 },
-        Poultry: { icon: '🐓', base: 32 },
-        Fisheries: { icon: '🐟', base: 34 },
-        Cattle: { icon: '🐄', base: 22 },
-        Handicraft: { icon: '🧺', base: 16 }
-    };
+  const CATEGORIES = {
+    Crop: { icon: '🌾', base: 26 },
+    Vegetable: { icon: '🥬', base: 24 },
+    Poultry: { icon: '🐓', base: 32 },
+    Fisheries: { icon: '🐟', base: 34 },
+    Cattle: { icon: '🐄', base: 22 },
+    Handicraft: { icon: '🧺', base: 16 }
+  };
+ 
+  const DASHBOARD_WIDGETS = [
+    { key: 'stats', label: 'Summary numbers', hint: 'Funds raised, wallet balance, sales, rating' },
+    { key: 'projects', label: 'Projects that need you', hint: 'Running and funding projects with a progress bar' },
+    { key: 'updates', label: 'Latest field updates', hint: 'Your most recent progress posts' },
+    { key: 'money', label: 'Money in and out', hint: 'A short list of recent transactions' }
+  ];
+  const DEFAULT_DASHBOARD_WIDGETS = { stats: true, projects: true, updates: true, money: true };
 
-    /* Dashboard widgets a farmer can turn on or off. Keys map 1:1 to the
-       sections rendered in routes.dashboard(). */
-    const DASHBOARD_WIDGETS = [
-        { key: 'stats', label: 'Summary numbers', hint: 'Funds raised, wallet balance, sales, rating' },
-        { key: 'projects', label: 'Projects that need you', hint: 'Running and funding projects with a progress bar' },
-        { key: 'updates', label: 'Latest field updates', hint: 'Your most recent progress posts' },
-        { key: 'money', label: 'Money in and out', hint: 'A short list of recent transactions' }
-    ];
-    const DEFAULT_DASHBOARD_WIDGETS = { stats: true, projects: true, updates: true, money: true };
+  function toast(msg, bad) {
+    const t = document.createElement('div');
+    t.className = 'toast' + (bad ? ' toast--bad' : '');
+    t.textContent = msg;
+    $('#toasts').appendChild(t);
+    setTimeout(() => t.remove(), 3200);
+  }
 
-    function toast(msg, bad) {
-        const t = document.createElement('div');
-        t.className = 'toast' + (bad ? ' toast--bad' : '');
-        t.textContent = msg;
-        $('#toasts').appendChild(t);
-        setTimeout(() => t.remove(), 3200);
-    }
+   let S = null;
 
-    /* --------------------------------------------------------------- state */
-    let S = null;
-
-    function save() {
-        try { localStorage.setItem(KEY, JSON.stringify(S)); }
-        catch (e) { /* storage may be unavailable; app still works in memory */ }
-    }
-    function load() {
-        try {
-            const raw = localStorage.getItem(KEY);
-            if (!raw) return null;
-            const parsed = JSON.parse(raw);
-            if (!parsed || typeof parsed !== 'object') return null;
-            // If missing essential arrays/objects, return null so boot() re-seeds complete state
-            if (!parsed.user || !parsed.projects || !Array.isArray(parsed.projects) || !parsed.wallet || !parsed.notifications) {
-                return null;
-            }
-            if (!parsed.settings) parsed.settings = { dashboard: { ...DEFAULT_DASHBOARD_WIDGETS } };
-            if (parsed.settings && !parsed.settings.dashboard) parsed.settings.dashboard = { ...DEFAULT_DASHBOARD_WIDGETS };
-            if (!parsed.products) parsed.products = [];
-            if (!parsed.orders) parsed.orders = [];
-            if (!parsed.reviews) parsed.reviews = [];
-            return parsed;
-        } catch (e) { /* ignore */ }
+  function save() {
+    try { localStorage.setItem(KEY, JSON.stringify(S)); }
+    catch (e) { /* storage may be unavailable; app still works in memory */ }
+  }
+  function load() {
+    try {
+      const raw = localStorage.getItem(KEY);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      if (!parsed || typeof parsed !== 'object') return null;
+      // If missing essential arrays/objects, return null so boot() re-seeds complete state
+      if (!parsed.user || !parsed.projects || !Array.isArray(parsed.projects) || !parsed.wallet || !parsed.notifications) {
         return null;
+      }
+      if (!parsed.settings) parsed.settings = { dashboard: { ...DEFAULT_DASHBOARD_WIDGETS } };
+      if (parsed.settings && !parsed.settings.dashboard) parsed.settings.dashboard = { ...DEFAULT_DASHBOARD_WIDGETS };
+      if (!parsed.products) parsed.products = [];
+      if (!parsed.orders) parsed.orders = [];
+      if (!parsed.reviews) parsed.reviews = [];
+      return parsed;
+    } catch (e) { /* ignore */ }
+    return null;
+  }
+
+  function notify(text, type) {
+    S.notifications.unshift({ id: uid('N'), text, type: type || 'info', at: new Date().toISOString(), read: false });
+    save(); paintBell();
+  }
+
+  function notifyBlockchainTransaction(tx) {
+    if (!tx) return;
+    if (!tx.txHash) {
+      tx.txHash = '0x' + Array.from({ length: 64 }, () => Math.floor(Math.random() * 16).toString(16)).join('');
+    }
+    tx.blockNumber = tx.blockNumber || (19842000 + Math.floor(Math.random() * 50000));
+    tx.blockchainVerified = true;
+    tx.verifiedEmail = 'binsadikmuhutasim@gmail.com';
+    tx.verifiedSms = '01838213020';
+
+    fetch('/api/v1/notifications/transaction', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        transaction: tx,
+        email: 'binsadikmuhutasim@gmail.com',
+        sms: '01838213020'
+      })
+    }).catch(() => { });
+
+    toast(`⛓️ Base Sepolia Tx Confirmed: ${tx.id} | 📧 Email: binsadikmuhutasim@gmail.com | 📱 SMS: 01838213020`);
+  }
+
+  /* ------------------------------------------------------- demo seed data */
+  /* A brand-new account starts empty — no demo projects, orders, money or
+     reviews. Only seed() (used by the "Sign in" demo login) fabricates
+     sample data; real registrations get this instead. */
+  function blank(user) {
+    return {
+      user,
+      projects: [],
+      products: [],
+      orders: [],
+      wallet: { balance: 0, tx: [] },
+      reviews: [],
+      settings: { dashboard: { ...DEFAULT_DASHBOARD_WIDGETS } },
+      notifications: [{
+        id: uid('N'),
+        text: 'Welcome to Grambandhan, ' + user.name.split(' ')[0] + '. Start by listing your first project.',
+        type: 'info', at: new Date().toISOString(), read: false
+      }]
+    };
+  }
+
+  function seed(user) {
+    const now = Date.now();
+    const d = (days) => new Date(now - days * 864e5).toISOString();
+    const p1 = {
+      id: 'PRJ-2401', title: 'Aman Rice Cultivation — 2 acres', category: 'Crop',
+      description: 'High-yield BRRI dhan87 on two acres of own land. Funds cover seed, urea, irrigation and harvest labour. Buyer already lined up at the Shibganj paddy hat.',
+      district: 'Bogura', upazila: 'Shibganj', goal: 145000, raised: 145000,
+      months: 5, start: today(), status: 'active', createdAt: d(46), disbursed: true,
+      images: ['🌾', '🌱', '🚜'], docs: ['land-deed.pdf'],
+      insurance: { opted: true, plan: 'Crop shield — standard', premium: 3625, claim: null },
+      investors: [
+        { name: 'Muhutasim B.', amount: 60000, at: d(40) },
+        { name: 'Tasfi A.', amount: 50000, at: d(36) },
+        { name: 'Shezan I.', amount: 35000, at: d(30) }
+      ],
+      progress: [
+        { id: uid('U'), at: d(28), percent: 15, title: 'Land prepared and seedbed sown', note: 'Two rounds of ploughing done. Seedbed covered against the heat.', photos: ['🌱'], verified: 'Field agent Nusrat' },
+        { id: uid('U'), at: d(14), percent: 45, title: 'Transplanting finished', note: 'All 2 acres transplanted with 8 labourers over three days.', photos: ['🌾', '👩‍🌾'], verified: 'Field agent Nusrat' },
+        { id: uid('U'), at: d(3), percent: 62, title: 'First urea application', note: 'Applied 45 kg urea. Slight leaf-folder seen in the north plot, spraying next week.', photos: ['🌿'], verified: null }
+      ]
+    };
+    const p2 = {
+      id: 'PRJ-2402', title: 'Organic Tomato Tunnel Farm', category: 'Vegetable',
+      description: 'Poly-tunnel tomato on 30 decimals, off-season variety for the winter market.',
+      district: 'Bogura', upazila: 'Shibganj', goal: 90000, raised: 32800,
+      months: 4, start: today(), status: 'funding', createdAt: d(12),
+      images: ['🍅'], docs: [],
+      insurance: { opted: false, plan: null, premium: 0, claim: null },
+      investors: [{ name: 'Fariha T.', amount: 32800, at: d(8) }],
+      progress: []
+    };
+    const p3 = {
+      id: 'PRJ-2403', title: 'Mango Orchard Expansion', category: 'Crop',
+      description: 'Adding 60 Amrapali saplings to the existing orchard plus a drip line.',
+      district: 'Bogura', upazila: 'Shibganj', goal: 60000, raised: 0,
+      months: 12, start: today(), status: 'pending', createdAt: d(2),
+      images: ['🥭'], docs: ['orchard-photo.jpg'],
+      insurance: { opted: false, plan: null, premium: 0, claim: null },
+      investors: [], progress: []
+    };
+    [p1, p2, p3].forEach((p) => { p.risk = assessRisk(p, user); });
+
+    return {
+      user,
+      projects: [p1, p2, p3],
+      products: [
+        { id: uid('P'), name: 'Premium Chinigura Rice', category: 'Farming', price: 600, unit: 'per 5 kg', qty: 40, desc: 'Aromatic fine rice, this season\'s harvest, sun-dried and hand-sorted.', icon: '🍚', status: 'live', sold: 26, rating: 4.8 },
+        { id: uid('P'), name: 'Farm Fresh Brown Eggs', category: 'Farming', price: 240, unit: 'per tray of 30', qty: 18, desc: 'Free-range hens, collected the same morning.', icon: '🥚', status: 'live', sold: 54, rating: 4.6 }
+      ],
+      orders: [
+        { id: uid('ORD'), product: 'Premium Chinigura Rice', buyer: 'Nabila H.', qty: 3, total: 1800, status: 'delivered', at: d(6) },
+        { id: uid('ORD'), product: 'Farm Fresh Brown Eggs', buyer: 'Rafid K.', qty: 2, total: 480, status: 'packed', at: d(1) },
+        { id: uid('ORD'), product: 'Premium Chinigura Rice', buyer: 'Sadia R.', qty: 1, total: 600, status: 'new', at: d(0) }
+      ],
+      wallet: {
+        balance: 41200,
+        tx: [
+          { id: uid('TXN'), type: 'in', desc: 'Disbursement — Aman Rice Cultivation', method: 'bKash', amount: 145000, at: d(26), status: 'complete' },
+          { id: uid('TXN'), type: 'out', desc: 'Insurance premium — Crop shield', method: 'Wallet', amount: 3625, at: d(26), status: 'complete' },
+          { id: uid('TXN'), type: 'out', desc: 'Withdrawal to bKash 017****891', method: 'bKash', amount: 100000, at: d(24), status: 'complete' },
+          { id: uid('TXN'), type: 'in', desc: 'Marketplace sale — Chinigura Rice ×3', method: 'Nagad', amount: 1800, at: d(6), status: 'complete' }
+        ]
+      },
+      reviews: [
+        { from: 'Muhutasim B.', role: 'Investor', stars: 5, at: d(9), project: 'Aman Rice Cultivation', text: 'Updates come on time with clear photos. I always know where my money went.' },
+        { from: 'Nabila H.', role: 'Buyer', stars: 5, at: d(5), project: 'Marketplace order', text: 'Rice arrived clean and exactly as described. Will order again.' },
+        { from: 'Field agent Nusrat', role: 'Field agent', stars: 4, at: d(14), project: 'Aman Rice Cultivation', text: 'Records are well kept. Keep the pest log updated weekly.' }
+      ],
+      settings: { dashboard: { ...DEFAULT_DASHBOARD_WIDGETS } },
+      notifications: [
+        { id: uid('N'), text: 'Fariha T. invested ৳32,800 in Organic Tomato Tunnel Farm.', type: 'money', at: d(8), read: false },
+        { id: uid('N'), text: 'Mango Orchard Expansion is awaiting admin approval.', type: 'info', at: d(2), read: false },
+        { id: uid('N'), text: 'New order: Premium Chinigura Rice ×1 from Sadia R.', type: 'order', at: d(0), read: false }
+      ]
+    };
+  }
+
+  /* ------------------------------------------------- AI risk suggestion */
+  /* Transparent rule-based scoring. Lower score = lower risk.            */
+  function assessRisk(p, user) {
+    const cat = CATEGORIES[p.category] || { base: 25 };
+    let score = cat.base;
+    const factors = [];
+    const advice = [];
+
+    factors.push({ label: p.category + ' projects carry a baseline risk of ' + cat.base + ' points', delta: cat.base });
+
+    // Budget size relative to a typical smallholder project
+    if (p.goal > 200000) { score += 14; factors.push({ label: 'Large funding goal above ৳2,00,000', delta: 14 }); advice.push('Split the project into two funding rounds so investors can see results before the second tranche.'); }
+    else if (p.goal > 100000) { score += 7; factors.push({ label: 'Mid-size funding goal', delta: 7 }); }
+    else { score -= 4; factors.push({ label: 'Modest funding goal is easier to fill and manage', delta: -4 }); }
+
+    // Duration
+    if (p.months > 9) { score += 12; factors.push({ label: 'Long cycle of ' + p.months + ' months', delta: 12 }); advice.push('Add a mid-cycle milestone so investors are not waiting months for news.'); }
+    else if (p.months < 3) { score += 5; factors.push({ label: 'Very short cycle leaves no room for delay', delta: 5 }); }
+
+    // Seasonality — monsoon start for field crops
+    const m = new Date(p.start || today()).getMonth();
+    const monsoon = m >= 5 && m <= 8;
+    if (monsoon && ['Crop', 'Vegetable'].includes(p.category)) {
+      score += 10;
+      factors.push({ label: 'Start date falls in the monsoon window', delta: 10 });
+      advice.push('Check the field drainage before transplanting; waterlogging is the top claim cause in this season.');
     }
 
-    function notify(text, type) {
-        S.notifications.unshift({ id: uid('N'), text, type: type || 'info', at: new Date().toISOString(), read: false });
-        save(); paintBell();
+    // Flood-prone belts
+    const flood = ['Sirajganj', 'Jamalpur', 'Satkhira', 'Khulna', 'Barishal'];
+    if (flood.includes(p.district)) {
+      score += 9;
+      factors.push({ label: p.district + ' is in a flood-prone belt', delta: 9 });
+      advice.push('Take insurance cover — projects in ' + p.district + ' claim roughly twice as often.');
     }
 
-    function notifyBlockchainTransaction(tx) {
-        if (!tx) return;
-        if (!tx.txHash) {
-            tx.txHash = '0x' + Array.from({ length: 64 }, () => Math.floor(Math.random() * 16).toString(16)).join('');
-        }
-        tx.blockNumber = tx.blockNumber || (19842000 + Math.floor(Math.random() * 50000));
-        tx.blockchainVerified = true;
-        tx.verifiedEmail = 'binsadikmuhutasim@gmail.com';
-        tx.verifiedSms = '01838213020';
+    // Farmer track record
+    const done = (user.completed || 0);
+    if (done >= 2) { score -= 10; factors.push({ label: done + ' projects already completed on this platform', delta: -10 }); }
+    else if (done === 0) { score += 6; factors.push({ label: 'No completed project history yet', delta: 6 }); advice.push('Post progress updates at least twice a month — new farmers with regular updates fund about 40% faster.'); }
 
-        fetch('/api/v1/notifications/transaction', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                transaction: tx,
-                email: 'binsadikmuhutasim@gmail.com',
-                sms: '01838213020'
-            })
-        }).catch(() => { });
+    // Documentation
+    if (!p.docs || !p.docs.length) { score += 6; factors.push({ label: 'No supporting document attached', delta: 6 }); advice.push('Attach a land document or a lease paper. Listings with documents get approved faster.'); }
 
-        toast(`⛓️ Base Sepolia Tx Confirmed: ${tx.id} | 📧 Email: binsadikmuhutasim@gmail.com | 📱 SMS: 01838213020`);
-    }
+    // Insurance offsets
+    if (p.insurance && p.insurance.opted) { score -= 8; factors.push({ label: 'Insurance cover selected', delta: -8 }); }
+    else { advice.push('Consider crop insurance — the premium is 2.5% of the goal and covers up to 80% of a verified loss.'); }
 
-    /* ------------------------------------------------------- demo seed data */
-    /* A brand-new account starts empty — no demo projects, orders, money or
-       reviews. Only seed() (used by the "Sign in" demo login) fabricates
-       sample data; real registrations get this instead. */
-    function blank(user) {
-        return {
-            user,
-            projects: [],
-            products: [],
-            orders: [],
-            wallet: { balance: 0, tx: [] },
-            reviews: [],
-            settings: { dashboard: { ...DEFAULT_DASHBOARD_WIDGETS } },
-            notifications: [{
-                id: uid('N'),
-                text: 'Welcome to Grambandhan, ' + user.name.split(' ')[0] + '. Start by listing your first project.',
-                type: 'info', at: new Date().toISOString(), read: false
-            }]
-        };
-    }
+    score = Math.max(5, Math.min(95, Math.round(score)));
+    const level = score < 33 ? 'low' : score < 60 ? 'medium' : 'high';
+    if (!advice.length) advice.push('This plan looks solid. Keep the progress log current and disbursement will move quickly.');
+    return { score, level, factors, advice, at: new Date().toISOString() };
+  }
 
-    function seed(user) {
-        const now = Date.now();
-        const d = (days) => new Date(now - days * 864e5).toISOString();
-        const p1 = {
-            id: 'PRJ-2401', title: 'Aman Rice Cultivation — 2 acres', category: 'Crop',
-            description: 'High-yield BRRI dhan87 on two acres of own land. Funds cover seed, urea, irrigation and harvest labour. Buyer already lined up at the Shibganj paddy hat.',
-            district: 'Bogura', upazila: 'Shibganj', goal: 145000, raised: 145000,
-            months: 5, start: today(), status: 'active', createdAt: d(46), disbursed: true,
-            images: ['🌾', '🌱', '🚜'], docs: ['land-deed.pdf'],
-            insurance: { opted: true, plan: 'Crop shield — standard', premium: 3625, claim: null },
-            investors: [
-                { name: 'Muhutasim B.', amount: 60000, at: d(40) },
-                { name: 'Tasfi A.', amount: 50000, at: d(36) },
-                { name: 'Shezan I.', amount: 35000, at: d(30) }
-            ],
-            progress: [
-                { id: uid('U'), at: d(28), percent: 15, title: 'Land prepared and seedbed sown', note: 'Two rounds of ploughing done. Seedbed covered against the heat.', photos: ['🌱'], verified: 'Field agent Nusrat' },
-                { id: uid('U'), at: d(14), percent: 45, title: 'Transplanting finished', note: 'All 2 acres transplanted with 8 labourers over three days.', photos: ['🌾', '👩‍🌾'], verified: 'Field agent Nusrat' },
-                { id: uid('U'), at: d(3), percent: 62, title: 'First urea application', note: 'Applied 45 kg urea. Slight leaf-folder seen in the north plot, spraying next week.', photos: ['🌿'], verified: null }
-            ]
-        };
-        const p2 = {
-            id: 'PRJ-2402', title: 'Organic Tomato Tunnel Farm', category: 'Vegetable',
-            description: 'Poly-tunnel tomato on 30 decimals, off-season variety for the winter market.',
-            district: 'Bogura', upazila: 'Shibganj', goal: 90000, raised: 32800,
-            months: 4, start: today(), status: 'funding', createdAt: d(12),
-            images: ['🍅'], docs: [],
-            insurance: { opted: false, plan: null, premium: 0, claim: null },
-            investors: [{ name: 'Fariha T.', amount: 32800, at: d(8) }],
-            progress: []
-        };
-        const p3 = {
-            id: 'PRJ-2403', title: 'Mango Orchard Expansion', category: 'Crop',
-            description: 'Adding 60 Amrapali saplings to the existing orchard plus a drip line.',
-            district: 'Bogura', upazila: 'Shibganj', goal: 60000, raised: 0,
-            months: 12, start: today(), status: 'pending', createdAt: d(2),
-            images: ['🥭'], docs: ['orchard-photo.jpg'],
-            insurance: { opted: false, plan: null, premium: 0, claim: null },
-            investors: [], progress: []
-        };
-        [p1, p2, p3].forEach((p) => { p.risk = assessRisk(p, user); });
+  /* ------------------------------------------------------- auth screens */
+  function bindAuth() {
+    const sel = $('#regDistrict');
+    sel.innerHTML = '<option value="">Select district</option>' +
+      DISTRICTS.map((d) => `<option>${d}</option>`).join('');
 
-        return {
-            user,
-            projects: [p1, p2, p3],
-            products: [
-                { id: uid('P'), name: 'Premium Chinigura Rice', category: 'Farming', price: 600, unit: 'per 5 kg', qty: 40, desc: 'Aromatic fine rice, this season\'s harvest, sun-dried and hand-sorted.', icon: '🍚', status: 'live', sold: 26, rating: 4.8 },
-                { id: uid('P'), name: 'Farm Fresh Brown Eggs', category: 'Farming', price: 240, unit: 'per tray of 30', qty: 18, desc: 'Free-range hens, collected the same morning.', icon: '🥚', status: 'live', sold: 54, rating: 4.6 }
-            ],
-            orders: [
-                { id: uid('ORD'), product: 'Premium Chinigura Rice', buyer: 'Nabila H.', qty: 3, total: 1800, status: 'delivered', at: d(6) },
-                { id: uid('ORD'), product: 'Farm Fresh Brown Eggs', buyer: 'Rafid K.', qty: 2, total: 480, status: 'packed', at: d(1) },
-                { id: uid('ORD'), product: 'Premium Chinigura Rice', buyer: 'Sadia R.', qty: 1, total: 600, status: 'new', at: d(0) }
-            ],
-            wallet: {
-                balance: 41200,
-                tx: [
-                    { id: uid('TXN'), type: 'in', desc: 'Disbursement — Aman Rice Cultivation', method: 'bKash', amount: 145000, at: d(26), status: 'complete' },
-                    { id: uid('TXN'), type: 'out', desc: 'Insurance premium — Crop shield', method: 'Wallet', amount: 3625, at: d(26), status: 'complete' },
-                    { id: uid('TXN'), type: 'out', desc: 'Withdrawal to bKash 017****891', method: 'bKash', amount: 100000, at: d(24), status: 'complete' },
-                    { id: uid('TXN'), type: 'in', desc: 'Marketplace sale — Chinigura Rice ×3', method: 'Nagad', amount: 1800, at: d(6), status: 'complete' }
-                ]
-            },
-            reviews: [
-                { from: 'Muhutasim B.', role: 'Investor', stars: 5, at: d(9), project: 'Aman Rice Cultivation', text: 'Updates come on time with clear photos. I always know where my money went.' },
-                { from: 'Nabila H.', role: 'Buyer', stars: 5, at: d(5), project: 'Marketplace order', text: 'Rice arrived clean and exactly as described. Will order again.' },
-                { from: 'Field agent Nusrat', role: 'Field agent', stars: 4, at: d(14), project: 'Aman Rice Cultivation', text: 'Records are well kept. Keep the pest log updated weekly.' }
-            ],
-            settings: { dashboard: { ...DEFAULT_DASHBOARD_WIDGETS } },
-            notifications: [
-                { id: uid('N'), text: 'Fariha T. invested ৳32,800 in Organic Tomato Tunnel Farm.', type: 'money', at: d(8), read: false },
-                { id: uid('N'), text: 'Mango Orchard Expansion is awaiting admin approval.', type: 'info', at: d(2), read: false },
-                { id: uid('N'), text: 'New order: Premium Chinigura Rice ×1 from Sadia R.', type: 'order', at: d(0), read: false }
-            ]
-        };
-    }
+    $$('[data-goauth]').forEach((b) => b.addEventListener('click', () => {
+      const go = b.dataset.goauth;
+      $('#viewLogin').classList.toggle('is-hidden', go !== 'login');
+      $('#viewSignup').classList.toggle('is-hidden', go !== 'signup');
+    }));
 
-    /* ------------------------------------------------- AI risk suggestion */
-    /* Transparent rule-based scoring. Lower score = lower risk.            */
-    function assessRisk(p, user) {
-        const cat = CATEGORIES[p.category] || { base: 25 };
-        let score = cat.base;
-        const factors = [];
-        const advice = [];
-
-        factors.push({ label: p.category + ' projects carry a baseline risk of ' + cat.base + ' points', delta: cat.base });
-
-        // Budget size relative to a typical smallholder project
-        if (p.goal > 200000) { score += 14; factors.push({ label: 'Large funding goal above ৳2,00,000', delta: 14 }); advice.push('Split the project into two funding rounds so investors can see results before the second tranche.'); }
-        else if (p.goal > 100000) { score += 7; factors.push({ label: 'Mid-size funding goal', delta: 7 }); }
-        else { score -= 4; factors.push({ label: 'Modest funding goal is easier to fill and manage', delta: -4 }); }
-
-        // Duration
-        if (p.months > 9) { score += 12; factors.push({ label: 'Long cycle of ' + p.months + ' months', delta: 12 }); advice.push('Add a mid-cycle milestone so investors are not waiting months for news.'); }
-        else if (p.months < 3) { score += 5; factors.push({ label: 'Very short cycle leaves no room for delay', delta: 5 }); }
-
-        // Seasonality — monsoon start for field crops
-        const m = new Date(p.start || today()).getMonth();
-        const monsoon = m >= 5 && m <= 8;
-        if (monsoon && ['Crop', 'Vegetable'].includes(p.category)) {
-            score += 10;
-            factors.push({ label: 'Start date falls in the monsoon window', delta: 10 });
-            advice.push('Check the field drainage before transplanting; waterlogging is the top claim cause in this season.');
-        }
-
-        // Flood-prone belts
-        const flood = ['Sirajganj', 'Jamalpur', 'Satkhira', 'Khulna', 'Barishal'];
-        if (flood.includes(p.district)) {
-            score += 9;
-            factors.push({ label: p.district + ' is in a flood-prone belt', delta: 9 });
-            advice.push('Take insurance cover — projects in ' + p.district + ' claim roughly twice as often.');
-        }
-
-        // Farmer track record
-        const done = (user.completed || 0);
-        if (done >= 2) { score -= 10; factors.push({ label: done + ' projects already completed on this platform', delta: -10 }); }
-        else if (done === 0) { score += 6; factors.push({ label: 'No completed project history yet', delta: 6 }); advice.push('Post progress updates at least twice a month — new farmers with regular updates fund about 40% faster.'); }
-
-        // Documentation
-        if (!p.docs || !p.docs.length) { score += 6; factors.push({ label: 'No supporting document attached', delta: 6 }); advice.push('Attach a land document or a lease paper. Listings with documents get approved faster.'); }
-
-        // Insurance offsets
-        if (p.insurance && p.insurance.opted) { score -= 8; factors.push({ label: 'Insurance cover selected', delta: -8 }); }
-        else { advice.push('Consider crop insurance — the premium is 2.5% of the goal and covers up to 80% of a verified loss.'); }
-
-        score = Math.max(5, Math.min(95, Math.round(score)));
-        const level = score < 33 ? 'low' : score < 60 ? 'medium' : 'high';
-        if (!advice.length) advice.push('This plan looks solid. Keep the progress log current and disbursement will move quickly.');
-        return { score, level, factors, advice, at: new Date().toISOString() };
-    }
-
-    /* ------------------------------------------------------- auth screens */
-    function bindAuth() {
-        const sel = $('#regDistrict');
-        sel.innerHTML = '<option value="">Select district</option>' +
-            DISTRICTS.map((d) => `<option>${d}</option>`).join('');
-
-        $$('[data-goauth]').forEach((b) => b.addEventListener('click', () => {
-            const go = b.dataset.goauth;
-            $('#viewLogin').classList.toggle('is-hidden', go !== 'login');
-            $('#viewSignup').classList.toggle('is-hidden', go !== 'signup');
-        }));
-
-        $('#loginForm').addEventListener('submit', (e) => {
-            e.preventDefault();
-            clearErrors();
-            const phone = $('#loginPhone').value.trim();
-            const pass = $('#loginPass').value;
-            let ok = true;
-            if (!/^01[3-9]\d{8}$/.test(phone)) { ok = false; setError('loginPhone', 'Enter an 11-digit Bangladeshi number starting with 01.'); }
-            if (pass.length < 4) { ok = false; setError('loginPass', 'Password must be at least 4 characters.'); }
-            if (!ok) return;
-            if (!S) {
-                S = seed({
-                    name: 'Rahima Khatun', phone, email: '', role: 'Farmer', district: 'Bogura',
-                    upazila: 'Shibganj', land: 210, exp: 14, crops: ['Rice', 'Vegetables', 'Poultry'],
-                    nid: '19XXXXXXXXXXXX', verified: true, completed: 2, rating: 4.8, joined: '2024-11-02'
-                });
-                save();
-            }
-            enterApp();
+    $('#loginForm').addEventListener('submit', (e) => {
+      e.preventDefault();
+      clearErrors();
+      const phone = $('#loginPhone').value.trim();
+      const pass = $('#loginPass').value;
+      let ok = true;
+      if (!/^01[3-9]\d{8}$/.test(phone)) { ok = false; setError('loginPhone', 'Enter an 11-digit Bangladeshi number starting with 01.'); }
+      if (pass.length < 4) { ok = false; setError('loginPass', 'Password must be at least 4 characters.'); }
+      if (!ok) return;
+      if (!S) {
+        S = seed({
+          name: 'Rahima Khatun', phone, email: '', role: 'Farmer', district: 'Bogura',
+          upazila: 'Shibganj', land: 210, exp: 14, crops: ['Rice', 'Vegetables', 'Poultry'],
+          nid: '19XXXXXXXXXXXX', verified: true, completed: 2, rating: 4.8, joined: '2024-11-02'
         });
+        save();
+      }
+      enterApp();
+    });
 
-        // registration wizard
-        let step = 1;
-        const setStep = (n) => {
-            step = n;
-            $$('.regstep').forEach((f) => f.classList.toggle('is-active', +f.dataset.step === n));
-            $$('.steps__item').forEach((li) => li.classList.toggle('is-active', +li.dataset.step <= n));
-            $('#regBack').classList.toggle('is-hidden', n === 1);
-            $('#regNext').classList.toggle('is-hidden', n === 3);
-            $('#regSubmit').classList.toggle('is-hidden', n !== 3);
-        };
-        $('#regBack').addEventListener('click', () => setStep(Math.max(1, step - 1)));
-        $('#regNext').addEventListener('click', () => { if (validateStep(step)) setStep(step + 1); });
-        $('#regNidFile').addEventListener('change', (e) => {
-            const f = e.target.files[0];
-            $('#regNidFileName').textContent = f ? f.name : 'Tap to attach a photo';
-        });
-        $('#regForm').addEventListener('submit', (e) => {
-            e.preventDefault();
-            if (!validateStep(3)) return;
-            const crops = $$('#regCrops input:checked').map((i) => i.value);
-            S = blank({
-                name: $('#regName').value.trim(),
-                phone: $('#regPhone').value.trim(),
-                email: $('#regEmail').value.trim(),
-                role: $$('input[name=role]').find((r) => r.checked).value,
-                district: $('#regDistrict').value,
-                upazila: $('#regUpazila').value.trim(),
-                land: +$('#regLand').value || 0,
-                exp: +$('#regExp').value || 0,
-                crops: crops.length ? crops : ['Rice'],
-                nid: $('#regNid').value.trim().replace(/\d(?=\d{4})/g, 'X'),
-                verified: true, completed: 0, rating: 0, joined: today()
-            });
-            save();
-            toast('Account created and NID verified.');
-            enterApp();
-        });
+    // registration wizard
+    let step = 1;
+    const setStep = (n) => {
+      step = n;
+      $$('.regstep').forEach((f) => f.classList.toggle('is-active', +f.dataset.step === n));
+      $$('.steps__item').forEach((li) => li.classList.toggle('is-active', +li.dataset.step <= n));
+      $('#regBack').classList.toggle('is-hidden', n === 1);
+      $('#regNext').classList.toggle('is-hidden', n === 3);
+      $('#regSubmit').classList.toggle('is-hidden', n !== 3);
+    };
+    $('#regBack').addEventListener('click', () => setStep(Math.max(1, step - 1)));
+    $('#regNext').addEventListener('click', () => { if (validateStep(step)) setStep(step + 1); });
+    $('#regNidFile').addEventListener('change', (e) => {
+      const f = e.target.files[0];
+      $('#regNidFileName').textContent = f ? f.name : 'Tap to attach a photo';
+    });
+    $('#regForm').addEventListener('submit', (e) => {
+      e.preventDefault();
+      if (!validateStep(3)) return;
+      const crops = $$('#regCrops input:checked').map((i) => i.value);
+      S = blank({
+        name: $('#regName').value.trim(),
+        phone: $('#regPhone').value.trim(),
+        email: $('#regEmail').value.trim(),
+        role: $$('input[name=role]').find((r) => r.checked).value,
+        district: $('#regDistrict').value,
+        upazila: $('#regUpazila').value.trim(),
+        land: +$('#regLand').value || 0,
+        exp: +$('#regExp').value || 0,
+        crops: crops.length ? crops : ['Rice'],
+        nid: $('#regNid').value.trim().replace(/\d(?=\d{4})/g, 'X'),
+        verified: true, completed: 0, rating: 0, joined: today()
+      });
+      save();
+      toast('Account created and NID verified.');
+      enterApp();
+    });
 
-        function validateStep(n) {
-            clearErrors();
-            let ok = true;
-            const need = (id, test, msg) => {
-                const v = $('#' + id).value.trim();
-                if (!test(v)) { setError(id, msg); ok = false; }
-            };
-            if (n === 1) {
-                need('regName', (v) => v.length >= 3, 'Please write your full name.');
-                need('regPhone', (v) => /^01[3-9]\d{8}$/.test(v), 'Enter an 11-digit number starting with 01.');
-                need('regEmail', (v) => v === '' || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v), 'That email address is not valid.');
-                need('regPass', (v) => v.length >= 6, 'Use at least 6 characters.');
-            }
-            if (n === 2) {
-                need('regDistrict', (v) => !!v, 'Choose your district.');
-                need('regUpazila', (v) => v.length >= 2, 'Write your upazila.');
-                need('regLand', (v) => v === '' || +v >= 0, 'Land size cannot be negative.');
-            }
-            if (n === 3) {
-                need('regNid', (v) => /^(\d{10}|\d{13}|\d{17})$/.test(v), 'An NID number has 10, 13 or 17 digits.');
-                if (!$('#regTerms').checked) { setError('regTerms', 'You need to accept the terms to continue.'); ok = false; }
-            }
-            return ok;
-        }
+    function validateStep(n) {
+      clearErrors();
+      let ok = true;
+      const need = (id, test, msg) => {
+        const v = $('#' + id).value.trim();
+        if (!test(v)) { setError(id, msg); ok = false; }
+      };
+      if (n === 1) {
+        need('regName', (v) => v.length >= 3, 'Please write your full name.');
+        need('regPhone', (v) => /^01[3-9]\d{8}$/.test(v), 'Enter an 11-digit number starting with 01.');
+        need('regEmail', (v) => v === '' || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v), 'That email address is not valid.');
+        need('regPass', (v) => v.length >= 6, 'Use at least 6 characters.');
+      }
+      if (n === 2) {
+        need('regDistrict', (v) => !!v, 'Choose your district.');
+        need('regUpazila', (v) => v.length >= 2, 'Write your upazila.');
+        need('regLand', (v) => v === '' || +v >= 0, 'Land size cannot be negative.');
+      }
+      if (n === 3) {
+        need('regNid', (v) => /^(\d{10}|\d{13}|\d{17})$/.test(v), 'An NID number has 10, 13 or 17 digits.');
+        if (!$('#regTerms').checked) { setError('regTerms', 'You need to accept the terms to continue.'); ok = false; }
+      }
+      return ok;
     }
+  }
 
-    function setError(id, msg) {
-        const el = $(`.field__error[data-for="${id}"]`);
-        if (el) { el.textContent = msg; el.classList.add('is-on'); }
-        const inp = $('#' + id);
-        if (inp && inp.closest('.field')) inp.closest('.field').classList.add('is-bad');
-    }
-    function clearErrors(root) {
-        $$('.field__error', root || document).forEach((e) => { e.classList.remove('is-on'); e.textContent = ''; });
-        $$('.field.is-bad', root || document).forEach((f) => f.classList.remove('is-bad'));
-    }
+  function setError(id, msg) {
+    const el = $(`.field__error[data-for="${id}"]`);
+    if (el) { el.textContent = msg; el.classList.add('is-on'); }
+    const inp = $('#' + id);
+    if (inp && inp.closest('.field')) inp.closest('.field').classList.add('is-bad');
+  }
+  function clearErrors(root) {
+    $$('.field__error', root || document).forEach((e) => { e.classList.remove('is-on'); e.textContent = ''; });
+    $$('.field.is-bad', root || document).forEach((f) => f.classList.remove('is-bad'));
+  }
 
-    /* ----------------------------------------------------------- app shell */
-    function enterApp() {
-        if (!S || !S.user || !S.projects || !S.projects.length) {
-            S = seed({
-                name: (S && S.user && S.user.name) || 'Md. Rafiqul Islam',
-                phone: (S && S.user && S.user.phone) || '01712345678',
-                email: (S && S.user && S.user.email) || '',
-                role: 'Farmer',
-                district: (S && S.user && S.user.district) || 'Bogura',
-                upazila: (S && S.user && S.user.upazila) || 'Shibganj',
-                land: 210, exp: 14, crops: ['Rice', 'Vegetables', 'Poultry'],
-                nid: '19XXXXXXXXXXXX', verified: true, completed: 2, rating: 4.8, joined: '2024-11-02'
-            });
-            save();
-        }
-        $('#authScreen').classList.add('is-hidden');
-        $('#app').classList.remove('is-hidden');
-        const name = (S.user && S.user.name) || 'Md. Rafiqul Islam';
-        const initials = name.split(/\s+/).map((w) => w[0]).slice(0, 2).join('').toUpperCase();
-        $('#topAvatar').textContent = initials;
-        $('#topName').textContent = name;
-        $('#topMeta').textContent = ((S.user && S.user.role) || 'Farmer') + ' · ' +
-            ((S.user && S.user.upazila) ? S.user.upazila + ', ' : '') +
-            ((S.user && S.user.district) || 'Bogura') +
-            ((S.user && S.user.verified) ? ' · verified' : '');
-        paintBell();
-        if (!location.hash.startsWith('#/')) location.hash = '#/dashboard';
-        route();
+  /* ----------------------------------------------------------- app shell */
+  function enterApp() {
+    if (!S || !S.user || !S.projects || !S.projects.length) {
+      S = seed({
+        name: (S && S.user && S.user.name) || 'Md. Rafiqul Islam',
+        phone: (S && S.user && S.user.phone) || '01712345678',
+        email: (S && S.user && S.user.email) || '',
+        role: 'Farmer',
+        district: (S && S.user && S.user.district) || 'Bogura',
+        upazila: (S && S.user && S.user.upazila) || 'Shibganj',
+        land: 210, exp: 14, crops: ['Rice', 'Vegetables', 'Poultry'],
+        nid: '19XXXXXXXXXXXX', verified: true, completed: 2, rating: 4.8, joined: '2024-11-02'
+      });
+      save();
     }
+    $('#authScreen').classList.add('is-hidden');
+    $('#app').classList.remove('is-hidden');
+    const name = (S.user && S.user.name) || 'Md. Rafiqul Islam';
+    const initials = name.split(/\s+/).map((w) => w[0]).slice(0, 2).join('').toUpperCase();
+    $('#topAvatar').textContent = initials;
+    $('#topName').textContent = name;
+    $('#topMeta').textContent = ((S.user && S.user.role) || 'Farmer') + ' · ' +
+      ((S.user && S.user.upazila) ? S.user.upazila + ', ' : '') +
+      ((S.user && S.user.district) || 'Bogura') +
+      ((S.user && S.user.verified) ? ' · verified' : '');
+    paintBell();
+    if (!location.hash.startsWith('#/')) location.hash = '#/dashboard';
+    route();
+  }
 
-    function paintBell() {
-        const notifs = (S && Array.isArray(S.notifications)) ? S.notifications : [];
-        const n = notifs.filter((x) => !x.read).length;
-        $('#bellDot').hidden = n === 0;
-        $('#notifList').innerHTML = notifs.length
-            ? notifs.slice(0, 12).map((n2) => `
+  function paintBell() {
+    const notifs = (S && Array.isArray(S.notifications)) ? S.notifications : [];
+    const n = notifs.filter((x) => !x.read).length;
+    $('#bellDot').hidden = n === 0;
+    $('#notifList').innerHTML = notifs.length
+      ? notifs.slice(0, 12).map((n2) => `
         <div class="notif ${n2.read ? '' : 'is-new'}">
           <span>${n2.type === 'money' ? '💰' : n2.type === 'order' ? '📦' : '📌'}</span>
           <div><div>${esc(n2.text)}</div><time>${ago(n2.at)}</time></div>
         </div>`).join('')
-            : '<p class="muted">Nothing new right now.</p>';
-    }
+      : '<p class="muted">Nothing new right now.</p>';
+  }
 
-    /* -------------------------------------------------------------- router */
-    const routes = {};
-    function route() {
-        const hash = location.hash.replace(/^#\//, '') || 'dashboard';
-        const [name, a, b] = hash.split('/');
-        const view = routes[name] || routes.dashboard;
-        $$('[data-nav]').forEach((el) => el.classList.toggle('is-on', el.dataset.nav === name ||
-            (name === 'project' && el.dataset.nav === 'projects')));
-        $('#main').innerHTML = view(a, b);
-        $('#rail').classList.remove('is-open');
-        window.scrollTo(0, 0);
-        if (view.after) view.after(a, b);
-    }
+  /* -------------------------------------------------------------- router */
+  const routes = {};
+  function route() {
+    const hash = location.hash.replace(/^#\//, '') || 'dashboard';
+    const [name, a, b] = hash.split('/');
+    const view = routes[name] || routes.dashboard;
+    $$('[data-nav]').forEach((el) => el.classList.toggle('is-on', el.dataset.nav === name ||
+      (name === 'project' && el.dataset.nav === 'projects')));
+    $('#main').innerHTML = view(a, b);
+    $('#rail').classList.remove('is-open');
+    window.scrollTo(0, 0);
+    if (view.after) view.after(a, b);
+  }
 
-    const find = (id) => S.projects.find((p) => p.id === id);
-    const statusTag = (s) => `<span class="tag tag--${s === 'funding' ? 'active' : s}">${({
-        pending: 'Awaiting approval', funding: 'Raising funds', active: 'Running',
-        completed: 'Completed', rejected: 'Needs changes', draft: 'Draft'
-    }[s] || s)}</span>`;
+  const find = (id) => S.projects.find((p) => p.id === id);
+  const statusTag = (s) => `<span class="tag tag--${s === 'funding' ? 'active' : s}">${({
+    pending: 'Awaiting approval', funding: 'Raising funds', active: 'Running',
+    completed: 'Completed', rejected: 'Needs changes', draft: 'Draft'
+  }[s] || s)}</span>`;
 
-    /* ----------------------------------------------------------- dashboard */
-    routes.dashboard = function () {
-        if (!S) return '';
-        const w = (S.settings && S.settings.dashboard) || DEFAULT_DASHBOARD_WIDGETS;
-        const projects = Array.isArray(S.projects) ? S.projects : [];
-        const active = projects.filter((p) => ['funding', 'active'].includes(p.status));
-        const raised = projects.reduce((t, p) => t + (p.raised || 0), 0);
-        const goal = projects.reduce((t, p) => t + (p.goal || 0), 0);
-        const orders = Array.isArray(S.orders) ? S.orders : [];
-        const sales = orders.reduce((t, o) => t + (o.total || 0), 0);
-        const openOrders = orders.filter((o) => o.status !== 'delivered').length;
-        const latest = projects.flatMap((p) => (p.progress || []).map((u) => ({ ...u, project: p.title })))
-            .sort((x, y) => new Date(y.at) - new Date(x.at)).slice(0, 3);
-        const anyOn = w.stats || w.projects || w.updates || w.money;
-        const uName = (S.user && S.user.name) ? S.user.name.split(' ')[0] : 'Farmer';
+  /* ----------------------------------------------------------- dashboard */
+  routes.dashboard = function () {
+    if (!S) return '';
+    const w = (S.settings && S.settings.dashboard) || DEFAULT_DASHBOARD_WIDGETS;
+    const projects = Array.isArray(S.projects) ? S.projects : [];
+    const active = projects.filter((p) => ['funding', 'active'].includes(p.status));
+    const raised = projects.reduce((t, p) => t + (p.raised || 0), 0);
+    const goal = projects.reduce((t, p) => t + (p.goal || 0), 0);
+    const orders = Array.isArray(S.orders) ? S.orders : [];
+    const sales = orders.reduce((t, o) => t + (o.total || 0), 0);
+    const openOrders = orders.filter((o) => o.status !== 'delivered').length;
+    const latest = projects.flatMap((p) => (p.progress || []).map((u) => ({ ...u, project: p.title })))
+      .sort((x, y) => new Date(y.at) - new Date(x.at)).slice(0, 3);
+    const anyOn = w.stats || w.projects || w.updates || w.money;
+    const uName = (S.user && S.user.name) ? S.user.name.split(' ')[0] : 'Farmer';
 
-        return `
+    return `
       <div class="pagehead">
         <div>
           <h1 class="h1">Good to see you, ${esc(uName)}</h1>
@@ -477,10 +473,10 @@
                 <div class="bar"><span style="width:${pct(p.raised, p.goal)}%"></span></div>
                 <div class="meter"><span>${taka(p.raised)} raised</span><span>${pct(p.raised, p.goal)}% of ${taka(p.goal)}</span></div>
                 ${p.status === 'active' && daysSinceUpdate(p) > 7
-                ? `<p class="pcard__meta" style="color:var(--clay)">No update for ${daysSinceUpdate(p)} days — investors are waiting.</p>` : ''}
+        ? `<p class="pcard__meta" style="color:var(--clay)">No update for ${daysSinceUpdate(p)} days — investors are waiting.</p>` : ''}
               </div>
             </a>`).join('')
-                        : `<div class="empty"><b>No running projects</b>List one and investors can start funding within two days.
+            : `<div class="empty"><b>No running projects</b>List one and investors can start funding within two days.
                <p><a class="btn btn--primary btn--sm" href="#/project/new" style="margin-top:10px">Start a project</a></p></div>`}
         </section>` : ''}
 
@@ -491,7 +487,7 @@
               <h5>${esc(u.title)}</h5><p>${esc(u.note)}</p>
               ${u.verified ? `<span class="verified">Verified by ${esc(u.verified)}</span>` : '<span class="pcard__meta">Awaiting field-agent check</span>'}
             </li>`).join('')}</ul>`
-                        : '<p class="muted">Your updates will appear here once you post one.</p>'}
+            : '<p class="muted">Your updates will appear here once you post one.</p>'}
         </section>` : ''}
       </div>` : ''}
 
@@ -502,17 +498,17 @@
 
       ${!anyOn ? `<div class="empty"><b>Your dashboard is empty</b>Every widget is turned off.
         <p><button class="btn btn--primary btn--sm" style="margin-top:10px" id="dashCustomizeEmpty">Turn widgets back on</button></p></div>` : ''}`;
-    };
+  };
 
-    routes.dashboard.after = function () {
-        const open = () => customizeDashboardModal();
-        const b1 = $('#dashCustomize'); if (b1) b1.addEventListener('click', open);
-        const b2 = $('#dashCustomizeEmpty'); if (b2) b2.addEventListener('click', open);
-    };
+  routes.dashboard.after = function () {
+    const open = () => customizeDashboardModal();
+    const b1 = $('#dashCustomize'); if (b1) b1.addEventListener('click', open);
+    const b2 = $('#dashCustomizeEmpty'); if (b2) b2.addEventListener('click', open);
+  };
 
-    function customizeDashboardModal() {
-        const w = S.settings.dashboard;
-        modal('Customize your dashboard', `
+  function customizeDashboardModal() {
+    const w = S.settings.dashboard;
+    modal('Customize your dashboard', `
       <p class="muted">Turn off anything you don't want to see every time you sign in. This only changes your own view.</p>
       <div class="widgetlist">
         ${DASHBOARD_WIDGETS.map((d) => `
@@ -525,55 +521,55 @@
         <button class="btn btn--ghost btn--sm" id="widgetsResetBtn">Reset to default</button>
         <button class="btn btn--primary btn--sm" id="widgetsDoneBtn">Done</button>
       </div>`, () => {
-            $$('[data-widget]').forEach((cb) => cb.addEventListener('change', () => {
-                S.settings.dashboard[cb.dataset.widget] = cb.checked;
-                save();
-            }));
-            $('#widgetsResetBtn').addEventListener('click', () => {
-                S.settings.dashboard = { ...DEFAULT_DASHBOARD_WIDGETS };
-                save(); closeModal(); toast('Dashboard reset to default.'); route();
-            });
-            $('#widgetsDoneBtn').addEventListener('click', () => { closeModal(); route(); });
-        });
-    }
+      $$('[data-widget]').forEach((cb) => cb.addEventListener('change', () => {
+        S.settings.dashboard[cb.dataset.widget] = cb.checked;
+        save();
+      }));
+      $('#widgetsResetBtn').addEventListener('click', () => {
+        S.settings.dashboard = { ...DEFAULT_DASHBOARD_WIDGETS };
+        save(); closeModal(); toast('Dashboard reset to default.'); route();
+      });
+      $('#widgetsDoneBtn').addEventListener('click', () => { closeModal(); route(); });
+    });
+  }
 
-    function daysSinceUpdate(p) {
-        if (!p.progress.length) return Math.round((Date.now() - new Date(p.createdAt)) / 864e5);
-        const last = p.progress.map((u) => new Date(u.at)).sort((a, b) => b - a)[0];
-        return Math.round((Date.now() - last) / 864e5);
-    }
+  function daysSinceUpdate(p) {
+    if (!p.progress.length) return Math.round((Date.now() - new Date(p.createdAt)) / 864e5);
+    const last = p.progress.map((u) => new Date(u.at)).sort((a, b) => b - a)[0];
+    return Math.round((Date.now() - last) / 864e5);
+  }
 
-    function txTable(rows) {
-        if (!rows.length) return '<div class="empty"><b>No transactions yet</b>Money moves show up here.</div>';
-        return `<div style="overflow-x:auto"><table><thead><tr>
+  function txTable(rows) {
+    if (!rows.length) return '<div class="empty"><b>No transactions yet</b>Money moves show up here.</div>';
+    return `<div style="overflow-x:auto"><table><thead><tr>
       <th>Date</th><th>Detail</th><th>Method</th><th class="num">Amount</th></tr></thead><tbody>
       ${rows.map((t) => `<tr>
         <td>${nice(t.at)}</td><td>${esc(t.desc)}</td><td>${esc(t.method)}</td>
         <td class="num" style="color:${t.type === 'in' ? 'var(--green-700)' : 'var(--clay)'};font-weight:600">
           ${t.type === 'in' ? '+' : '−'}${taka(t.amount)}</td></tr>`).join('')}
       </tbody></table></div>`;
-    }
+  }
 
-    /* -------------------------------------------------------- project list */
-    routes.projects = function (filter) {
-        const f = filter || 'all';
-        const list = S.projects.filter((p) => f === 'all' ? true : f === 'open'
-            ? ['funding', 'active', 'pending'].includes(p.status) : p.status === f);
-        return `
+  /* -------------------------------------------------------- project list */
+  routes.projects = function (filter) {
+    const f = filter || 'all';
+    const list = S.projects.filter((p) => f === 'all' ? true : f === 'open'
+      ? ['funding', 'active', 'pending'].includes(p.status) : p.status === f);
+    return `
       <div class="pagehead">
         <div><h1 class="h1">My projects</h1><p>Create listings, track funding and keep investors updated.</p></div>
         <a class="btn btn--primary" href="#/project/new">Start a project</a>
       </div>
       <div class="tabs">
         ${[['all', 'All'], ['open', 'Open'], ['pending', 'Awaiting approval'], ['active', 'Running'], ['completed', 'Completed']]
-                .map(([k, label]) => `<button class="${f === k ? 'is-on' : ''}" onclick="location.hash='#/projects/${k}'">${label}</button>`).join('')}
+        .map(([k, label]) => `<button class="${f === k ? 'is-on' : ''}" onclick="location.hash='#/projects/${k}'">${label}</button>`).join('')}
       </div>
       ${list.length ? `<div class="plist">${list.map(projectCard).join('')}</div>`
-                : `<div class="empty"><b>Nothing here yet</b>Projects you create will be listed under this tab.</div>`}`;
-    };
+        : `<div class="empty"><b>Nothing here yet</b>Projects you create will be listed under this tab.</div>`}`;
+  };
 
-    function projectCard(p) {
-        return `<a class="pcard" href="#/project/${p.id}">
+  function projectCard(p) {
+    return `<a class="pcard" href="#/project/${p.id}">
       <div class="pcard__top">
         <span class="pcard__cat">${CATEGORIES[p.category].icon}</span>
         ${statusTag(p.status)}
@@ -588,17 +584,17 @@
           <span class="pcard__meta">${p.investors.length} investor${p.investors.length === 1 ? '' : 's'}</span>
         </div>
       </div></a>`;
-    }
+  }
 
-    /* ------------------------------------------------------ project detail */
-    routes.project = function (id, tab) {
-        if (id === 'new') return newProjectView();
-        const p = find(id);
-        if (!p) return `<div class="empty"><b>Project not found</b>It may have been removed.</div>`;
-        const t = tab || 'overview';
-        const T = (k, label) => `<button class="${t === k ? 'is-on' : ''}" onclick="location.hash='#/project/${p.id}/${k}'">${label}</button>`;
+  /* ------------------------------------------------------ project detail */
+  routes.project = function (id, tab) {
+    if (id === 'new') return newProjectView();
+    const p = find(id);
+    if (!p) return `<div class="empty"><b>Project not found</b>It may have been removed.</div>`;
+    const t = tab || 'overview';
+    const T = (k, label) => `<button class="${t === k ? 'is-on' : ''}" onclick="location.hash='#/project/${p.id}/${k}'">${label}</button>`;
 
-        return `
+    return `
       <div class="pagehead">
         <div>
           <div class="row" style="gap:8px"><a class="link" href="#/projects">← All projects</a>${statusTag(p.status)}</div>
@@ -614,14 +610,14 @@
 
       <div class="tabs">${T('overview', 'Overview')}${T('progress', 'Progress')}${T('investors', 'Investors')}${T('risk', 'Risk advice')}${T('insurance', 'Insurance')}</div>
       ${{
-                overview: pOverview, progress: pProgress, investors: pInvestors,
-                risk: pRisk, insurance: pInsurance
-            }[t](p)}`;
-    };
+        overview: pOverview, progress: pProgress, investors: pInvestors,
+        risk: pRisk, insurance: pInsurance
+      }[t](p)}`;
+  };
 
-    function pOverview(p) {
-        const doneUpdate = p.progress.length ? p.progress[p.progress.length - 1].percent : 0;
-        return `<div class="cards cols-2">
+  function pOverview(p) {
+    const doneUpdate = p.progress.length ? p.progress[p.progress.length - 1].percent : 0;
+    return `<div class="cards cols-2">
       <section class="box">
         <div class="box__head"><h3>Funding</h3><span class="pcard__meta">${p.id}</span></div>
         <div class="bar"><span style="width:${pct(p.raised, p.goal)}%"></span></div>
@@ -645,10 +641,10 @@
       <p style="margin:6px 0 0;color:var(--ink-2)">Listings are usually reviewed within 48 hours. You will get a notification either way. If something is missing, you can fix it and resubmit without starting over.</p></div>` : ''}
     ${p.status === 'rejected' ? `<div class="box" style="margin-top:16px;background:var(--clay-100);border-color:#EFC9BE">
       <h3 class="h3">Changes requested</h3><p style="margin:6px 0 0">${esc(p.rejectNote || 'The reviewer asked for a clearer budget breakdown and a land document.')}</p></div>` : ''}`;
-    }
+  }
 
-    function pProgress(p) {
-        return `<div class="box">
+  function pProgress(p) {
+    return `<div class="box">
       <div class="box__head"><h3>Field log</h3>
         ${p.status === 'active' ? `<button class="btn btn--primary btn--sm" data-act="update" data-id="${p.id}">Post an update</button>` : ''}</div>
       ${p.progress.length ? `<ul class="tl">${[...p.progress].reverse().map((u) => `
@@ -658,25 +654,25 @@
           <p>${esc(u.note)}</p>
           ${u.photos && u.photos.length ? `<div class="thumbs" style="margin-top:8px">${u.photos.map((x) => `<span class="thumb">${x}</span>`).join('')}</div>` : ''}
           ${u.verified ? `<span class="verified">Verified by ${esc(u.verified)}</span>`
-                : `<span class="pcard__meta">Waiting for the field agent to verify</span>`}
+        : `<span class="pcard__meta">Waiting for the field agent to verify</span>`}
         </li>`).join('')}</ul>`
-                : `<div class="empty"><b>No updates yet</b>Investors fund farmers they can see. Post a photo and a line about what you did this week.</div>`}
+        : `<div class="empty"><b>No updates yet</b>Investors fund farmers they can see. Post a photo and a line about what you did this week.</div>`}
     </div>`;
-    }
+  }
 
-    function pInvestors(p) {
-        if (!p.investors.length) return `<div class="empty"><b>No investors yet</b>Once your listing is approved it appears in the investor feed.</div>`;
-        return `<div class="box"><div class="box__head"><h3>Who funded this project</h3>
+  function pInvestors(p) {
+    if (!p.investors.length) return `<div class="empty"><b>No investors yet</b>Once your listing is approved it appears in the investor feed.</div>`;
+    return `<div class="box"><div class="box__head"><h3>Who funded this project</h3>
       <span class="pcard__meta">Profit is shared in proportion to these amounts</span></div>
       <div style="overflow-x:auto"><table><thead><tr><th>Investor</th><th>Date</th><th class="num">Amount</th><th class="num">Share</th></tr></thead>
       <tbody>${p.investors.map((i) => `<tr><td>${esc(i.name)}</td><td>${nice(i.at)}</td>
         <td class="num">${taka(i.amount)}</td><td class="num">${Math.round(i.amount / p.raised * 100)}%</td></tr>`).join('')}
       </tbody></table></div></div>`;
-    }
+  }
 
-    function pRisk(p) {
-        const r = p.risk;
-        return `<div class="box">
+  function pRisk(p) {
+    const r = p.risk;
+    return `<div class="box">
       <div class="box__head"><h3>Risk reading for this project</h3>
         <button class="btn btn--ghost btn--sm" data-act="rescore" data-id="${p.id}">Recalculate</button></div>
       <div class="risk">
@@ -690,11 +686,11 @@
         <h3 class="h3">What to do about it</h3>
         <ul style="color:var(--ink-2)">${r.advice.map((a) => `<li>${esc(a)}</li>`).join('')}</ul>
       </div></div>`;
-    }
+  }
 
-    function pInsurance(p) {
-        if (p.insurance.opted) {
-            return `<div class="box">
+  function pInsurance(p) {
+    if (p.insurance.opted) {
+      return `<div class="box">
         <div class="box__head"><h3>Cover in force</h3><span class="tag tag--active">Active</span></div>
         <dl class="kv">
           <dt>Plan</dt><dd>${esc(p.insurance.plan)}</dd>
@@ -703,22 +699,22 @@
           <dt>Claim status</dt><dd>${p.insurance.claim ? esc(p.insurance.claim.status) : 'No claim filed'}</dd>
         </dl>
         ${p.insurance.claim ? `<p class="hint">Filed ${nice(p.insurance.claim.at)} — ${esc(p.insurance.claim.reason)}</p>`
-                    : `<button class="btn btn--ghost" style="margin-top:14px" data-act="claim" data-id="${p.id}">File a claim</button>`}
+          : `<button class="btn btn--ghost" style="margin-top:14px" data-act="claim" data-id="${p.id}">File a claim</button>`}
       </div>`;
-        }
-        const premium = Math.round(p.goal * 0.025);
-        return `<div class="box">
+    }
+    const premium = Math.round(p.goal * 0.025);
+    return `<div class="box">
       <div class="box__head"><h3>Protect this project</h3></div>
       <p style="margin-top:0;color:var(--ink-2)">Flood, pest outbreak, disease and a verified crop failure are covered. The premium comes out of your wallet once, and a verified loss pays back up to 80% of the funding goal.</p>
       <dl class="kv"><dt>Premium</dt><dd>${taka(premium)} (2.5% of ${taka(p.goal)})</dd>
         <dt>Maximum payout</dt><dd>${taka(Math.round(p.goal * 0.8))}</dd></dl>
       <button class="btn btn--primary" style="margin-top:14px" data-act="insure" data-id="${p.id}">Take this cover</button>
     </div>`;
-    }
+  }
 
-    /* ------------------------------------------------- new project wizard */
-    function newProjectView() {
-        return `
+  /* ------------------------------------------------- new project wizard */
+  function newProjectView() {
+    return `
       <div class="pagehead"><div>
         <a class="link" href="#/projects">← All projects</a>
         <h1 class="h1">Start a new project</h1>
@@ -784,43 +780,43 @@
           </div>
         </form>
       </div>`;
-    }
+  }
 
-    routes.project.after = function (id) {
-        if (id !== 'new') { bindDetailActions(); return; }
-        let step = 1;
-        const setStep = (n) => {
-            step = n;
-            $$('#npForm .regstep').forEach((f) => f.classList.toggle('is-active', +f.dataset.step === n));
-            $$('#npSteps .steps__item').forEach((li) => li.classList.toggle('is-active', +li.dataset.step <= n));
-            $('#npBack').classList.toggle('is-hidden', n === 1);
-            $('#npNext').classList.toggle('is-hidden', n === 3);
-            $('#npSubmit').classList.toggle('is-hidden', n !== 3);
-            if (n === 3) renderReview();
-        };
+  routes.project.after = function (id) {
+    if (id !== 'new') { bindDetailActions(); return; }
+    let step = 1;
+    const setStep = (n) => {
+      step = n;
+      $$('#npForm .regstep').forEach((f) => f.classList.toggle('is-active', +f.dataset.step === n));
+      $$('#npSteps .steps__item').forEach((li) => li.classList.toggle('is-active', +li.dataset.step <= n));
+      $('#npBack').classList.toggle('is-hidden', n === 1);
+      $('#npNext').classList.toggle('is-hidden', n === 3);
+      $('#npSubmit').classList.toggle('is-hidden', n !== 3);
+      if (n === 3) renderReview();
+    };
 
-        const draft = () => ({
-            id: uid('PRJ'),
-            title: $('#npTitle').value.trim(),
-            category: $('#npCat').value,
-            description: $('#npDesc').value.trim(),
-            district: $('#npDistrict').value,
-            upazila: $('#npUpazila').value.trim(),
-            goal: +$('#npGoal').value || 0,
-            months: +$('#npMonths').value || 0,
-            start: $('#npStart').value || today(),
-            outcome: $('#npOutcome').value.trim(),
-            raised: 0, status: 'pending', createdAt: new Date().toISOString(),
-            images: [CATEGORIES[$('#npCat').value].icon],
-            docs: window.__npFiles || [],
-            insurance: { opted: false, plan: null, premium: 0, claim: null },
-            investors: [], progress: []
-        });
+    const draft = () => ({
+      id: uid('PRJ'),
+      title: $('#npTitle').value.trim(),
+      category: $('#npCat').value,
+      description: $('#npDesc').value.trim(),
+      district: $('#npDistrict').value,
+      upazila: $('#npUpazila').value.trim(),
+      goal: +$('#npGoal').value || 0,
+      months: +$('#npMonths').value || 0,
+      start: $('#npStart').value || today(),
+      outcome: $('#npOutcome').value.trim(),
+      raised: 0, status: 'pending', createdAt: new Date().toISOString(),
+      images: [CATEGORIES[$('#npCat').value].icon],
+      docs: window.__npFiles || [],
+      insurance: { opted: false, plan: null, premium: 0, claim: null },
+      investors: [], progress: []
+    });
 
-        function renderReview() {
-            const p = draft();
-            p.risk = assessRisk(p, S.user);
-            $('#npReview').innerHTML = `
+    function renderReview() {
+      const p = draft();
+      p.risk = assessRisk(p, S.user);
+      $('#npReview').innerHTML = `
         <h2 class="h2" style="margin-bottom:12px">Check before you submit</h2>
         <dl class="kv" style="margin-bottom:18px">
           <dt>Project</dt><dd>${esc(p.title) || '—'}</dd>
@@ -838,82 +834,82 @@
           </div>
         </div>
         <p class="hint">On submit the listing goes to the admin team for approval. It becomes visible to investors once approved.</p>`;
-        }
-
-        function validate(n) {
-            clearErrors($('#npForm'));
-            let ok = true;
-            const bad = (id, msg) => { setError(id, msg); ok = false; };
-            if (n === 1) {
-                if ($('#npTitle').value.trim().length < 6) bad('npTitle', 'Give the project a clear name of at least 6 characters.');
-                if ($('#npDesc').value.trim().length < 30) bad('npDesc', 'Write at least a couple of sentences — investors read this first.');
-                if ($('#npUpazila').value.trim().length < 2) bad('npUpazila', 'Write your upazila.');
-            }
-            if (n === 2) {
-                const g = +$('#npGoal').value, m = +$('#npMonths').value;
-                if (!(g >= 5000)) bad('npGoal', 'The smallest project we can list is ৳5,000.');
-                if (g > 2000000) bad('npGoal', 'Above ৳20,00,000 the project has to be split into rounds.');
-                if (!(m >= 1 && m <= 36)) bad('npMonths', 'Cycle length must be between 1 and 36 months.');
-                if (new Date($('#npStart').value) < new Date(today())) bad('npStart', 'Start date cannot be in the past.');
-            }
-            return ok;
-        }
-
-        $('#npFiles').addEventListener('change', (e) => {
-            window.__npFiles = Array.from(e.target.files).map((f) => f.name);
-            $('#npFilesName').textContent = window.__npFiles.length
-                ? window.__npFiles.length + ' file(s) attached' : 'Attach land papers or field photos';
-        });
-        $('#npBack').addEventListener('click', () => setStep(step - 1));
-        $('#npNext').addEventListener('click', () => { if (validate(step)) setStep(step + 1); });
-        $('#npDraft').addEventListener('click', () => {
-            const p = draft();
-            if (!p.title) { setError('npTitle', 'A draft still needs a name.'); return; }
-            p.status = 'draft'; p.risk = assessRisk(p, S.user);
-            S.projects.unshift(p); save();
-            toast('Draft saved.');
-            location.hash = '#/projects';
-        });
-        $('#npForm').addEventListener('submit', (e) => {
-            e.preventDefault();
-            if (!validate(1)) { setStep(1); return; }
-            if (!validate(2)) { setStep(2); return; }
-            const p = draft();
-            p.risk = assessRisk(p, S.user);
-            S.projects.unshift(p);
-            window.__npFiles = [];
-            notify('“' + p.title + '” was submitted and is waiting for admin approval.', 'info');
-            save();
-            toast('Submitted. The admin team reviews it within 48 hours.');
-            location.hash = '#/project/' + p.id;
-        });
-    };
-
-    /* -------------------------------------------------- detail-page actions */
-    function bindDetailActions() {
-        $$('[data-act]').forEach((btn) => btn.addEventListener('click', () => {
-            const p = find(btn.dataset.id);
-            const act = btn.dataset.act;
-            if (act === 'update') return updateModal(p);
-            if (act === 'disburse') return disburseModal(p);
-            if (act === 'insure') return insureModal(p);
-            if (act === 'claim') return claimModal(p);
-            if (act === 'resubmit') { p.status = 'pending'; save(); toast('Resubmitted for review.'); route(); }
-            if (act === 'rescore') { p.risk = assessRisk(p, S.user); save(); toast('Risk recalculated.'); route(); }
-        }));
     }
 
-    function modal(title, body, onOpen) {
-        $('#modalTitle').textContent = title;
-        $('#modalBody').innerHTML = body;
-        $('#modal').hidden = false;
-        if (onOpen) onOpen();
+    function validate(n) {
+      clearErrors($('#npForm'));
+      let ok = true;
+      const bad = (id, msg) => { setError(id, msg); ok = false; };
+      if (n === 1) {
+        if ($('#npTitle').value.trim().length < 6) bad('npTitle', 'Give the project a clear name of at least 6 characters.');
+        if ($('#npDesc').value.trim().length < 30) bad('npDesc', 'Write at least a couple of sentences — investors read this first.');
+        if ($('#npUpazila').value.trim().length < 2) bad('npUpazila', 'Write your upazila.');
+      }
+      if (n === 2) {
+        const g = +$('#npGoal').value, m = +$('#npMonths').value;
+        if (!(g >= 5000)) bad('npGoal', 'The smallest project we can list is ৳5,000.');
+        if (g > 2000000) bad('npGoal', 'Above ৳20,00,000 the project has to be split into rounds.');
+        if (!(m >= 1 && m <= 36)) bad('npMonths', 'Cycle length must be between 1 and 36 months.');
+        if (new Date($('#npStart').value) < new Date(today())) bad('npStart', 'Start date cannot be in the past.');
+      }
+      return ok;
     }
-    const closeModal = () => { $('#modal').hidden = true; };
 
-    function updateModal(p) {
-        const last = p.progress.length ? p.progress[p.progress.length - 1].percent : 0;
-        modal('Post a progress update', `
+    $('#npFiles').addEventListener('change', (e) => {
+      window.__npFiles = Array.from(e.target.files).map((f) => f.name);
+      $('#npFilesName').textContent = window.__npFiles.length
+        ? window.__npFiles.length + ' file(s) attached' : 'Attach land papers or field photos';
+    });
+    $('#npBack').addEventListener('click', () => setStep(step - 1));
+    $('#npNext').addEventListener('click', () => { if (validate(step)) setStep(step + 1); });
+    $('#npDraft').addEventListener('click', () => {
+      const p = draft();
+      if (!p.title) { setError('npTitle', 'A draft still needs a name.'); return; }
+      p.status = 'draft'; p.risk = assessRisk(p, S.user);
+      S.projects.unshift(p); save();
+      toast('Draft saved.');
+      location.hash = '#/projects';
+    });
+    $('#npForm').addEventListener('submit', (e) => {
+      e.preventDefault();
+      if (!validate(1)) { setStep(1); return; }
+      if (!validate(2)) { setStep(2); return; }
+      const p = draft();
+      p.risk = assessRisk(p, S.user);
+      S.projects.unshift(p);
+      window.__npFiles = [];
+      notify('“' + p.title + '” was submitted and is waiting for admin approval.', 'info');
+      save();
+      toast('Submitted. The admin team reviews it within 48 hours.');
+      location.hash = '#/project/' + p.id;
+    });
+  };
+
+  /* -------------------------------------------------- detail-page actions */
+  function bindDetailActions() {
+    $$('[data-act]').forEach((btn) => btn.addEventListener('click', () => {
+      const p = find(btn.dataset.id);
+      const act = btn.dataset.act;
+      if (act === 'update') return updateModal(p);
+      if (act === 'disburse') return disburseModal(p);
+      if (act === 'insure') return insureModal(p);
+      if (act === 'claim') return claimModal(p);
+      if (act === 'resubmit') { p.status = 'pending'; save(); toast('Resubmitted for review.'); route(); }
+      if (act === 'rescore') { p.risk = assessRisk(p, S.user); save(); toast('Risk recalculated.'); route(); }
+    }));
+  }
+
+  function modal(title, body, onOpen) {
+    $('#modalTitle').textContent = title;
+    $('#modalBody').innerHTML = body;
+    $('#modal').hidden = false;
+    if (onOpen) onOpen();
+  }
+  const closeModal = () => { $('#modal').hidden = true; };
+
+  function updateModal(p) {
+    const last = p.progress.length ? p.progress[p.progress.length - 1].percent : 0;
+    modal('Post a progress update', `
       <label class="field"><span class="field__label">What happened? <em>শিরোনাম</em></span>
         <input id="upTitle" placeholder="e.g. Second urea applied">
         <span class="field__error" data-for="upTitle"></span></label>
@@ -926,37 +922,37 @@
         <label class="drop" for="upFiles"><input type="file" id="upFiles" hidden multiple accept="image/*">
           <b id="upFilesName">Attach field photos</b><i>Photos are what investors trust most</i></label></div>
       <button class="btn btn--primary btn--block" id="upSave">Post update</button>`, () => {
-            $('#upPct').addEventListener('input', (e) => { $('#upPctOut').textContent = e.target.value + '%'; });
-            let files = [];
-            $('#upFiles').addEventListener('change', (e) => {
-                files = Array.from(e.target.files).map(() => '📷');
-                $('#upFilesName').textContent = files.length + ' photo(s) attached';
-            });
-            $('#upSave').addEventListener('click', () => {
-                clearErrors($('#modalBody'));
-                let ok = true;
-                if ($('#upTitle').value.trim().length < 4) { setError('upTitle', 'Write a short headline.'); ok = false; }
-                if ($('#upNote').value.trim().length < 15) { setError('upNote', 'Add a little more detail.'); ok = false; }
-                if (!ok) return;
-                const percent = +$('#upPct').value;
-                p.progress.push({
-                    id: uid('U'), at: new Date().toISOString(), percent,
-                    title: $('#upTitle').value.trim(), note: $('#upNote').value.trim(),
-                    photos: files.length ? files : ['📷'], verified: null
-                });
-                if (percent === 100) {
-                    p.status = 'completed';
-                    S.user.completed = (S.user.completed || 0) + 1;
-                    notify('“' + p.title + '” marked complete. Profit distribution will start after field verification.', 'money');
-                }
-                notify('Update posted on “' + p.title + '”. Investors have been notified.', 'info');
-                save(); closeModal(); toast('Update posted.'); route();
-            });
+      $('#upPct').addEventListener('input', (e) => { $('#upPctOut').textContent = e.target.value + '%'; });
+      let files = [];
+      $('#upFiles').addEventListener('change', (e) => {
+        files = Array.from(e.target.files).map(() => '📷');
+        $('#upFilesName').textContent = files.length + ' photo(s) attached';
+      });
+      $('#upSave').addEventListener('click', () => {
+        clearErrors($('#modalBody'));
+        let ok = true;
+        if ($('#upTitle').value.trim().length < 4) { setError('upTitle', 'Write a short headline.'); ok = false; }
+        if ($('#upNote').value.trim().length < 15) { setError('upNote', 'Add a little more detail.'); ok = false; }
+        if (!ok) return;
+        const percent = +$('#upPct').value;
+        p.progress.push({
+          id: uid('U'), at: new Date().toISOString(), percent,
+          title: $('#upTitle').value.trim(), note: $('#upNote').value.trim(),
+          photos: files.length ? files : ['📷'], verified: null
         });
-    }
+        if (percent === 100) {
+          p.status = 'completed';
+          S.user.completed = (S.user.completed || 0) + 1;
+          notify('“' + p.title + '” marked complete. Profit distribution will start after field verification.', 'money');
+        }
+        notify('Update posted on “' + p.title + '”. Investors have been notified.', 'info');
+        save(); closeModal(); toast('Update posted.'); route();
+      });
+    });
+  }
 
-    function disburseModal(p) {
-        modal('Request your funds', `
+  function disburseModal(p) {
+    modal('Request your funds', `
       <p class="muted">The project is fully funded. A field agent verifies the site, then the money moves to your wallet — usually within two working days.</p>
       <dl class="kv" style="margin-bottom:16px">
         <dt>Available</dt><dd>${taka(p.raised)}</dd>
@@ -966,25 +962,25 @@
       <label class="field"><span class="field__label">Send to</span>
         <select id="dsMethod"><option>bKash</option><option>Nagad</option><option>Bank transfer</option></select></label>
       <button class="btn btn--primary btn--block" id="dsGo">Request disbursement</button>`, () => {
-            $('#dsGo').addEventListener('click', () => {
-                const net = p.raised - Math.round(p.raised * 0.02);
-                p.disbursed = true;
-                S.wallet.balance += net;
-                const tx = {
-                    id: uid('TXN'), type: 'in', desc: 'Disbursement — ' + p.title,
-                    method: $('#dsMethod').value, amount: net, at: new Date().toISOString(), status: 'complete'
-                };
-                S.wallet.tx.unshift(tx);
-                notifyBlockchainTransaction(tx);
-                notify('Disbursement of ' + taka(net) + ' credited to your wallet.', 'money');
-                save(); closeModal(); toast('Funds credited to your wallet.'); route();
-            });
-        });
-    }
+      $('#dsGo').addEventListener('click', () => {
+        const net = p.raised - Math.round(p.raised * 0.02);
+        p.disbursed = true;
+        S.wallet.balance += net;
+        const tx = {
+          id: uid('TXN'), type: 'in', desc: 'Disbursement — ' + p.title,
+          method: $('#dsMethod').value, amount: net, at: new Date().toISOString(), status: 'complete'
+        };
+        S.wallet.tx.unshift(tx);
+        notifyBlockchainTransaction(tx);
+        notify('Disbursement of ' + taka(net) + ' credited to your wallet.', 'money');
+        save(); closeModal(); toast('Funds credited to your wallet.'); route();
+      });
+    });
+  }
 
-    function insureModal(p) {
-        const premium = Math.round(p.goal * 0.025);
-        modal('Take insurance cover', `
+  function insureModal(p) {
+    const premium = Math.round(p.goal * 0.025);
+    modal('Take insurance cover', `
       <p class="muted">Cover starts the day the premium clears and runs to the end of the cycle.</p>
       <label class="field"><span class="field__label">Plan</span>
         <select id="inPlan">
@@ -996,23 +992,23 @@
         <dt>Wallet balance</dt><dd>${taka(S.wallet.balance)}</dd></dl>
       <button class="btn btn--primary btn--block" id="inGo" ${S.wallet.balance < premium ? 'disabled' : ''}>
         ${S.wallet.balance < premium ? 'Not enough balance' : 'Pay premium and activate'}</button>`, () => {
-            const go = $('#inGo');
-            if (go.disabled) return;
-            go.addEventListener('click', () => {
-                S.wallet.balance -= premium;
-                const tx = { id: uid('TXN'), type: 'out', desc: 'Insurance premium — ' + p.title, method: 'Wallet', amount: premium, at: new Date().toISOString(), status: 'complete' };
-                S.wallet.tx.unshift(tx);
-                notifyBlockchainTransaction(tx);
-                p.insurance = { opted: true, plan: $('#inPlan').value, premium, claim: null };
-                p.risk = assessRisk(p, S.user);
-                notify('Insurance active on “' + p.title + '”.', 'info');
-                save(); closeModal(); toast('Cover is active.'); route();
-            });
-        });
-    }
+      const go = $('#inGo');
+      if (go.disabled) return;
+      go.addEventListener('click', () => {
+        S.wallet.balance -= premium;
+        const tx = { id: uid('TXN'), type: 'out', desc: 'Insurance premium — ' + p.title, method: 'Wallet', amount: premium, at: new Date().toISOString(), status: 'complete' };
+        S.wallet.tx.unshift(tx);
+        notifyBlockchainTransaction(tx);
+        p.insurance = { opted: true, plan: $('#inPlan').value, premium, claim: null };
+        p.risk = assessRisk(p, S.user);
+        notify('Insurance active on “' + p.title + '”.', 'info');
+        save(); closeModal(); toast('Cover is active.'); route();
+      });
+    });
+  }
 
-    function claimModal(p) {
-        modal('File an insurance claim', `
+  function claimModal(p) {
+    modal('File an insurance claim', `
       <label class="field"><span class="field__label">What happened?</span>
         <select id="clReason"><option>Flood damage</option><option>Pest or disease outbreak</option>
           <option>Crop failure</option><option>Livestock loss</option><option>Storm damage</option></select></label>
@@ -1023,20 +1019,20 @@
         <label class="drop" for="clFiles"><input type="file" id="clFiles" hidden multiple accept="image/*">
         <b>Attach photos of the damage</b><i>A field agent will visit to confirm</i></label></div>
       <button class="btn btn--primary btn--block" id="clGo">Submit claim</button>`, () => {
-            $('#clGo').addEventListener('click', () => {
-                clearErrors($('#modalBody'));
-                if ($('#clNote').value.trim().length < 15) { setError('clNote', 'Please describe the loss in a little more detail.'); return; }
-                p.insurance.claim = { at: new Date().toISOString(), reason: $('#clReason').value, status: 'Under review' };
-                notify('Claim filed on “' + p.title + '”. A field agent will visit within 3 days.', 'info');
-                save(); closeModal(); toast('Claim submitted.'); route();
-            });
-        });
-    }
+      $('#clGo').addEventListener('click', () => {
+        clearErrors($('#modalBody'));
+        if ($('#clNote').value.trim().length < 15) { setError('clNote', 'Please describe the loss in a little more detail.'); return; }
+        p.insurance.claim = { at: new Date().toISOString(), reason: $('#clReason').value, status: 'Under review' };
+        notify('Claim filed on “' + p.title + '”. A field agent will visit within 3 days.', 'info');
+        save(); closeModal(); toast('Claim submitted.'); route();
+      });
+    });
+  }
 
-    /* -------------------------------------------------------- marketplace */
-    routes.market = function () {
-        const sales = S.orders.reduce((t, o) => t + o.total, 0);
-        return `
+  /* -------------------------------------------------------- marketplace */
+  routes.market = function () {
+    const sales = S.orders.reduce((t, o) => t + o.total, 0);
+    return `
       <div class="pagehead">
         <div><h1 class="h1">Marketplace</h1><p>Sell straight to buyers. No middleman takes a cut.</p></div>
         <button class="btn btn--primary" id="addProduct">List a product</button>
@@ -1064,7 +1060,7 @@
               <button class="btn btn--danger btn--sm" data-remove="${pr.id}">Remove</button>
             </div>
           </div></div>`).join('')}</div>`
-                : `<div class="empty"><b>No products yet</b>List what you have ready to sell — rice, eggs, vegetables, handicraft.</div>`}
+        : `<div class="empty"><b>No products yet</b>List what you have ready to sell — rice, eggs, vegetables, handicraft.</div>`}
       </section>
 
       <section class="box">
@@ -1079,43 +1075,43 @@
             ${o.status === 'new' ? 'Mark packed' : 'Mark delivered'}</button>` : ''}</td></tr>`).join('')}
         </tbody></table></div>` : `<div class="empty"><b>No orders yet</b>Orders from buyers will show here.</div>`}
       </section>`;
-    };
+  };
 
-    routes.market.after = function () {
-        $('#addProduct').addEventListener('click', productModal);
-        $$('[data-adv]').forEach((b) => b.addEventListener('click', () => {
-            const o = S.orders.find((x) => x.id === b.dataset.adv);
-            if (o.status === 'new') { o.status = 'packed'; toast('Order marked packed.'); }
-            else if (o.status === 'packed') {
-                o.status = 'delivered';
-                S.wallet.balance += o.total;
-                const tx = { id: uid('TXN'), type: 'in', desc: 'Marketplace sale — ' + o.product, method: 'Nagad', amount: o.total, at: new Date().toISOString(), status: 'complete' };
-                S.wallet.tx.unshift(tx);
-                notifyBlockchainTransaction(tx);
-                toast('Delivered. ' + taka(o.total) + ' added to your wallet.');
-            }
-            save(); route();
-        }));
-        $$('[data-remove]').forEach((b) => b.addEventListener('click', () => {
-            S.products = S.products.filter((p) => p.id !== b.dataset.remove);
-            save(); toast('Product removed.'); route();
-        }));
-        $$('[data-stock]').forEach((b) => b.addEventListener('click', () => {
-            const pr = S.products.find((p) => p.id === b.dataset.stock);
-            modal('Update stock', `
+  routes.market.after = function () {
+    $('#addProduct').addEventListener('click', productModal);
+    $$('[data-adv]').forEach((b) => b.addEventListener('click', () => {
+      const o = S.orders.find((x) => x.id === b.dataset.adv);
+      if (o.status === 'new') { o.status = 'packed'; toast('Order marked packed.'); }
+      else if (o.status === 'packed') {
+        o.status = 'delivered';
+        S.wallet.balance += o.total;
+        const tx = { id: uid('TXN'), type: 'in', desc: 'Marketplace sale — ' + o.product, method: 'Nagad', amount: o.total, at: new Date().toISOString(), status: 'complete' };
+        S.wallet.tx.unshift(tx);
+        notifyBlockchainTransaction(tx);
+        toast('Delivered. ' + taka(o.total) + ' added to your wallet.');
+      }
+      save(); route();
+    }));
+    $$('[data-remove]').forEach((b) => b.addEventListener('click', () => {
+      S.products = S.products.filter((p) => p.id !== b.dataset.remove);
+      save(); toast('Product removed.'); route();
+    }));
+    $$('[data-stock]').forEach((b) => b.addEventListener('click', () => {
+      const pr = S.products.find((p) => p.id === b.dataset.stock);
+      modal('Update stock', `
         <label class="field"><span class="field__label">Units available for ${esc(pr.name)}</span>
           <input id="stQty" type="number" min="0" value="${pr.qty}"></label>
         <button class="btn btn--primary btn--block" id="stGo">Save stock</button>`, () => {
-                $('#stGo').addEventListener('click', () => {
-                    pr.qty = Math.max(0, +$('#stQty').value || 0);
-                    save(); closeModal(); toast('Stock updated.'); route();
-                });
-            });
-        }));
-    };
+        $('#stGo').addEventListener('click', () => {
+          pr.qty = Math.max(0, +$('#stQty').value || 0);
+          save(); closeModal(); toast('Stock updated.'); route();
+        });
+      });
+    }));
+  };
 
-    function productModal() {
-        modal('List a product', `
+  function productModal() {
+    modal('List a product', `
       <label class="field"><span class="field__label">Product name <em>পণ্যের নাম</em></span>
         <input id="prName" placeholder="e.g. Handwoven Bamboo Basket">
         <span class="field__error" data-for="prName"></span></label>
@@ -1135,33 +1131,33 @@
         <textarea id="prDesc" placeholder="What it is, how it was grown or made, how soon you can ship."></textarea>
         <span class="field__error" data-for="prDesc"></span></label>
       <button class="btn btn--primary btn--block" id="prGo">Publish to marketplace</button>`, () => {
-            $('#prGo').addEventListener('click', () => {
-                clearErrors($('#modalBody'));
-                let ok = true;
-                if ($('#prName').value.trim().length < 3) { setError('prName', 'Give the product a name.'); ok = false; }
-                if (!(+$('#prPrice').value > 0)) { setError('prPrice', 'Price must be more than zero.'); ok = false; }
-                if (!(+$('#prQty').value > 0)) { setError('prQty', 'Enter how many units you have.'); ok = false; }
-                if ($('#prDesc').value.trim().length < 10) { setError('prDesc', 'Add a short description for buyers.'); ok = false; }
-                if (!ok) return;
-                const cat = $('#prCat').value;
-                S.products.unshift({
-                    id: uid('P'), name: $('#prName').value.trim(), category: cat,
-                    price: +$('#prPrice').value, unit: $('#prUnit').value.trim() || 'per unit',
-                    qty: +$('#prQty').value, desc: $('#prDesc').value.trim(),
-                    icon: cat === 'Handicraft' ? '🧺' : cat === 'Dairy' ? '🥛' : '🌽',
-                    status: 'live', sold: 0, rating: 0
-                });
-                notify('“' + $('#prName').value.trim() + '” is live in the marketplace.', 'order');
-                save(); closeModal(); toast('Product published.'); route();
-            });
+      $('#prGo').addEventListener('click', () => {
+        clearErrors($('#modalBody'));
+        let ok = true;
+        if ($('#prName').value.trim().length < 3) { setError('prName', 'Give the product a name.'); ok = false; }
+        if (!(+$('#prPrice').value > 0)) { setError('prPrice', 'Price must be more than zero.'); ok = false; }
+        if (!(+$('#prQty').value > 0)) { setError('prQty', 'Enter how many units you have.'); ok = false; }
+        if ($('#prDesc').value.trim().length < 10) { setError('prDesc', 'Add a short description for buyers.'); ok = false; }
+        if (!ok) return;
+        const cat = $('#prCat').value;
+        S.products.unshift({
+          id: uid('P'), name: $('#prName').value.trim(), category: cat,
+          price: +$('#prPrice').value, unit: $('#prUnit').value.trim() || 'per unit',
+          qty: +$('#prQty').value, desc: $('#prDesc').value.trim(),
+          icon: cat === 'Handicraft' ? '🧺' : cat === 'Dairy' ? '🥛' : '🌽',
+          status: 'live', sold: 0, rating: 0
         });
-    }
+        notify('“' + $('#prName').value.trim() + '” is live in the marketplace.', 'order');
+        save(); closeModal(); toast('Product published.'); route();
+      });
+    });
+  }
 
-    /* -------------------------------------------------------------- wallet */
-    routes.wallet = function () {
-        const inSum = S.wallet.tx.filter((t) => t.type === 'in').reduce((a, t) => a + t.amount, 0);
-        const outSum = S.wallet.tx.filter((t) => t.type === 'out').reduce((a, t) => a + t.amount, 0);
-        return `
+  /* -------------------------------------------------------------- wallet */
+  routes.wallet = function () {
+    const inSum = S.wallet.tx.filter((t) => t.type === 'in').reduce((a, t) => a + t.amount, 0);
+    const outSum = S.wallet.tx.filter((t) => t.type === 'out').reduce((a, t) => a + t.amount, 0);
+    return `
       <div class="pagehead">
         <div><h1 class="h1">Money</h1><p>Disbursements, sales and withdrawals in one place.</p></div>
         <button class="btn btn--primary" id="withdrawBtn">Withdraw</button>
@@ -1182,17 +1178,17 @@
         <section class="box">
           <div class="box__head"><h3>Upcoming</h3></div>
           ${S.projects.filter((p) => p.status === 'active' && p.raised >= p.goal).length
-                ? S.projects.filter((p) => p.status === 'active' && p.raised >= p.goal).map((p) =>
-                    `<p style="margin:0 0 8px">${esc(p.title)} — profit split due at harvest, around ${nice(new Date(Date.now() + p.months * 26e8))}.</p>`).join('')
-                : '<p class="muted">Nothing scheduled. Fully funded projects show their payout dates here.</p>'}
+        ? S.projects.filter((p) => p.status === 'active' && p.raised >= p.goal).map((p) =>
+          `<p style="margin:0 0 8px">${esc(p.title)} — profit split due at harvest, around ${nice(new Date(Date.now() + p.months * 26e8))}.</p>`).join('')
+        : '<p class="muted">Nothing scheduled. Fully funded projects show their payout dates here.</p>'}
         </section>
       </div>
       <section class="box"><div class="box__head"><h3>Transaction history</h3></div>${txTable(S.wallet.tx)}</section>`;
-    };
+  };
 
-    routes.wallet.after = function () {
-        $('#withdrawBtn').addEventListener('click', () => {
-            modal('Withdraw money', `
+  routes.wallet.after = function () {
+    $('#withdrawBtn').addEventListener('click', () => {
+      modal('Withdraw money', `
         <p class="muted">Available: <b>${taka(S.wallet.balance)}</b></p>
         <label class="field"><span class="field__label">Amount (৳)</span>
           <input id="wdAmt" type="number" min="100" max="${S.wallet.balance}">
@@ -1200,35 +1196,35 @@
         <label class="field"><span class="field__label">Send to</span>
           <select id="wdTo"><option>bKash 017****891</option><option>Nagad 017****891</option><option>Sonali Bank ****4102</option></select></label>
         <button class="btn btn--primary btn--block" id="wdGo">Withdraw</button>`, () => {
-                $('#wdGo').addEventListener('click', () => {
-                    clearErrors($('#modalBody'));
-                    const amt = +$('#wdAmt').value;
-                    if (!(amt >= 100)) { setError('wdAmt', 'The smallest withdrawal is ৳100.'); return; }
-                    if (amt > S.wallet.balance) { setError('wdAmt', 'That is more than your balance.'); return; }
-                    S.wallet.balance -= amt;
-                    const tx = {
-                        id: uid('TXN'), type: 'out', desc: 'Withdrawal to ' + $('#wdTo').value,
-                        method: $('#wdTo').value.split(' ')[0], amount: amt,
-                        at: new Date().toISOString(), status: 'complete'
-                    };
-                    S.wallet.tx.unshift(tx);
-                    notifyBlockchainTransaction(tx);
-                    notify('Withdrawal of ' + taka(amt) + ' sent to ' + $('#wdTo').value + '.', 'money');
-                    save(); closeModal(); toast('Withdrawal sent.'); route();
-                });
-            });
+        $('#wdGo').addEventListener('click', () => {
+          clearErrors($('#modalBody'));
+          const amt = +$('#wdAmt').value;
+          if (!(amt >= 100)) { setError('wdAmt', 'The smallest withdrawal is ৳100.'); return; }
+          if (amt > S.wallet.balance) { setError('wdAmt', 'That is more than your balance.'); return; }
+          S.wallet.balance -= amt;
+          const tx = {
+            id: uid('TXN'), type: 'out', desc: 'Withdrawal to ' + $('#wdTo').value,
+            method: $('#wdTo').value.split(' ')[0], amount: amt,
+            at: new Date().toISOString(), status: 'complete'
+          };
+          S.wallet.tx.unshift(tx);
+          notifyBlockchainTransaction(tx);
+          notify('Withdrawal of ' + taka(amt) + ' sent to ' + $('#wdTo').value + '.', 'money');
+          save(); closeModal(); toast('Withdrawal sent.'); route();
         });
-    };
+      });
+    });
+  };
 
-    /* ------------------------------------------------------------- support */
-    routes.support = function () {
-        const experts = [
-            { n: 'Dr. Anisur Rahman', s: 'Senior Crop Specialist', d: 'Rice, maize, soil health', on: true },
-            { n: 'Farhana Yeasmin', s: 'Plant Pathologist', d: 'Pests and disease control', on: true },
-            { n: 'Md. Jahangir Alam', s: 'Livestock &amp; Fisheries', d: 'Poultry, cattle, pond management', on: false },
-            { n: 'Shireen Akter', s: 'Handicraft &amp; Market Linkage', d: 'Pricing, packaging, buyers', on: true }
-        ];
-        return `
+  /* ------------------------------------------------------------- support */
+  routes.support = function () {
+    const experts = [
+      { n: 'Dr. Anisur Rahman', s: 'Senior Crop Specialist', d: 'Rice, maize, soil health', on: true },
+      { n: 'Farhana Yeasmin', s: 'Plant Pathologist', d: 'Pests and disease control', on: true },
+      { n: 'Md. Jahangir Alam', s: 'Livestock &amp; Fisheries', d: 'Poultry, cattle, pond management', on: false },
+      { n: 'Shireen Akter', s: 'Handicraft &amp; Market Linkage', d: 'Pricing, packaging, buyers', on: true }
+    ];
+    return `
       <div class="pagehead"><div><h1 class="h1">Expert help</h1>
         <p>Free advice from verified agricultural specialists. Most reply within an hour.</p></div></div>
       <dl class="cards cols-4" style="margin-bottom:18px">
@@ -1245,11 +1241,11 @@
             ${e.on ? 'Ask' : 'Offline'}</button>
         </div>`).join('')}
       </div>`;
-    };
+  };
 
-    routes.support.after = function () {
-        $$('[data-ask]').forEach((b) => b.addEventListener('click', () => {
-            modal('Ask ' + b.dataset.ask, `
+  routes.support.after = function () {
+    $$('[data-ask]').forEach((b) => b.addEventListener('click', () => {
+      modal('Ask ' + b.dataset.ask, `
         <label class="field"><span class="field__label">Your question <em>আপনার প্রশ্ন</em></span>
           <textarea id="qText" placeholder="Describe the problem. Mention the crop, its age and what you have already tried."></textarea>
           <span class="field__error" data-for="qText"></span></label>
@@ -1257,21 +1253,21 @@
           <label class="drop" for="qFile"><input type="file" id="qFile" hidden accept="image/*">
             <b>Attach a photo</b><i>A clear leaf or soil photo helps a lot</i></label></div>
         <button class="btn btn--primary btn--block" id="qGo">Send question</button>`, () => {
-                $('#qGo').addEventListener('click', () => {
-                    clearErrors($('#modalBody'));
-                    if ($('#qText').value.trim().length < 15) { setError('qText', 'Add a bit more detail so the expert can help.'); return; }
-                    notify('Your question was sent to ' + b.dataset.ask + '.', 'info');
-                    closeModal(); toast('Question sent. You will get a reply in the app.');
-                });
-            });
-        }));
-    };
+        $('#qGo').addEventListener('click', () => {
+          clearErrors($('#modalBody'));
+          if ($('#qText').value.trim().length < 15) { setError('qText', 'Add a bit more detail so the expert can help.'); return; }
+          notify('Your question was sent to ' + b.dataset.ask + '.', 'info');
+          closeModal(); toast('Question sent. You will get a reply in the app.');
+        });
+      });
+    }));
+  };
 
-    /* ------------------------------------------------------------- reviews */
-    routes.reviews = function () {
-        const avg = S.reviews.length
-            ? (S.reviews.reduce((a, r) => a + r.stars, 0) / S.reviews.length).toFixed(1) : '—';
-        return `
+  /* ------------------------------------------------------------- reviews */
+  routes.reviews = function () {
+    const avg = S.reviews.length
+      ? (S.reviews.reduce((a, r) => a + r.stars, 0) / S.reviews.length).toFixed(1) : '—';
+    return `
       <div class="pagehead"><div><h1 class="h1">What people say about you</h1>
         <p>Your rating decides how high your listings appear to investors and buyers.</p></div></div>
       <dl class="cards cols-3" style="margin-bottom:18px">
@@ -1286,13 +1282,13 @@
           <p style="margin:0;color:var(--ink-2)">${esc(r.text)}</p>
           <p class="hint">${nice(r.at)}</p>
         </div>`).join('')}</div>`
-                : '<div class="empty"><b>No reviews yet</b>Finish your first project and investors will rate you.</div>'}`;
-    };
+        : '<div class="empty"><b>No reviews yet</b>Finish your first project and investors will rate you.</div>'}`;
+  };
 
-    /* ------------------------------------------------------------- profile */
-    routes.profile = function () {
-        const u = S.user;
-        return `
+  /* ------------------------------------------------------------- profile */
+  routes.profile = function () {
+    const u = S.user;
+    return `
       <div class="pagehead"><div><h1 class="h1">Profile</h1><p>This is what investors and buyers see.</p></div>
         <button class="btn btn--ghost" id="editProfile">Edit profile</button></div>
       <div class="cards cols-2">
@@ -1327,12 +1323,12 @@
         </div>
         <p class="hint">Resetting clears every project, product and transaction stored in this browser.</p>
       </section>`;
-    };
+  };
 
-    routes.profile.after = function () {
-        $('#editProfile').addEventListener('click', () => {
-            const u = S.user;
-            modal('Edit profile', `
+  routes.profile.after = function () {
+    $('#editProfile').addEventListener('click', () => {
+      const u = S.user;
+      modal('Edit profile', `
         <label class="field"><span class="field__label">Full name</span><input id="epName" value="${esc(u.name)}">
           <span class="field__error" data-for="epName"></span></label>
         <div class="grid2">
@@ -1347,88 +1343,88 @@
         <label class="field"><span class="field__label">Email</span><input id="epEmail" type="email" value="${esc(u.email)}">
           <span class="field__error" data-for="epEmail"></span></label>
         <button class="btn btn--primary btn--block" id="epGo">Save changes</button>`, () => {
-                $('#epGo').addEventListener('click', () => {
-                    clearErrors($('#modalBody'));
-                    let ok = true;
-                    if ($('#epName').value.trim().length < 3) { setError('epName', 'Name is too short.'); ok = false; }
-                    const em = $('#epEmail').value.trim();
-                    if (em && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(em)) { setError('epEmail', 'That email is not valid.'); ok = false; }
-                    if (!ok) return;
-                    Object.assign(S.user, {
-                        name: $('#epName').value.trim(), district: $('#epDistrict').value,
-                        upazila: $('#epUpazila').value.trim(), land: +$('#epLand').value || 0,
-                        exp: +$('#epExp').value || 0, email: em
-                    });
-                    save(); closeModal(); toast('Profile updated.'); enterApp();
-                });
-            });
+        $('#epGo').addEventListener('click', () => {
+          clearErrors($('#modalBody'));
+          let ok = true;
+          if ($('#epName').value.trim().length < 3) { setError('epName', 'Name is too short.'); ok = false; }
+          const em = $('#epEmail').value.trim();
+          if (em && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(em)) { setError('epEmail', 'That email is not valid.'); ok = false; }
+          if (!ok) return;
+          Object.assign(S.user, {
+            name: $('#epName').value.trim(), district: $('#epDistrict').value,
+            upazila: $('#epUpazila').value.trim(), land: +$('#epLand').value || 0,
+            exp: +$('#epExp').value || 0, email: em
+          });
+          save(); closeModal(); toast('Profile updated.'); enterApp();
         });
-        $('#themeBtn').addEventListener('click', () => {
-            const cur = document.documentElement.getAttribute('data-theme');
-            const next = cur === 'dark' ? 'light' : 'dark';
-            document.documentElement.setAttribute('data-theme', next);
-            try { localStorage.setItem(KEY + '.theme', next); } catch (e) { }
-        });
-        $('#resetBtn').addEventListener('click', () => {
-            if (!confirm('Clear all saved data and start over?')) return;
-            try { localStorage.removeItem(KEY); } catch (e) { }
-            location.reload();
-        });
-    };
+      });
+    });
+    $('#themeBtn').addEventListener('click', () => {
+      const cur = document.documentElement.getAttribute('data-theme');
+      const next = cur === 'dark' ? 'light' : 'dark';
+      document.documentElement.setAttribute('data-theme', next);
+      try { localStorage.setItem(KEY + '.theme', next); } catch (e) { }
+    });
+    $('#resetBtn').addEventListener('click', () => {
+      if (!confirm('Clear all saved data and start over?')) return;
+      try { localStorage.removeItem(KEY); } catch (e) { }
+      location.reload();
+    });
+  };
 
-    /* ---------------------------------------------------------------- boot */
-    function boot() {
-        try {
-            const t = localStorage.getItem(KEY + '.theme');
-            if (t) document.documentElement.setAttribute('data-theme', t);
-        } catch (e) { }
+  /* ---------------------------------------------------------------- boot */
+  function boot() {
+    try {
+      const t = localStorage.getItem(KEY + '.theme');
+      if (t) document.documentElement.setAttribute('data-theme', t);
+    } catch (e) { }
 
-        bindAuth();
-        S = load();
-        const isSso = location.search.includes('sso=1') || localStorage.getItem('grambandhan_farmer_sso') === 'true';
-        if (!S || !S.projects || !S.projects.length || !S.wallet || !S.notifications) {
-            S = seed({
-                name: (S && S.user && S.user.name) || 'Md. Rafiqul Islam',
-                phone: (S && S.user && S.user.phone) || '01712345678',
-                email: (S && S.user && S.user.email) || '',
-                role: 'Farmer',
-                district: (S && S.user && S.user.district) || 'Bogura',
-                upazila: (S && S.user && S.user.upazila) || 'Shibganj',
-                land: 210, exp: 14, crops: ['Rice', 'Vegetables', 'Poultry'],
-                nid: '19XXXXXXXXXXXX', verified: true, completed: 2, rating: 4.8, joined: '2024-11-02'
-            });
-            save();
-        }
-
-        $('#menuBtn').addEventListener('click', () => $('#rail').classList.toggle('is-open'));
-        $('#bellBtn').addEventListener('click', () => { $('#notifPanel').hidden = !$('#notifPanel').hidden; });
-        $('#notifClose').addEventListener('click', () => { $('#notifPanel').hidden = true; });
-        $('#notifClear').addEventListener('click', () => {
-            if (S && S.notifications) {
-                S.notifications.forEach((n) => { n.read = true; });
-                save(); paintBell(); toast('All caught up.');
-            }
-        });
-        $('#logoutBtn').addEventListener('click', () => {
-            try { localStorage.removeItem('grambandhan_farmer_sso'); } catch (e) { }
-            $('#app').classList.add('is-hidden');
-            $('#authScreen').classList.remove('is-hidden');
-            $('#viewLogin').classList.remove('is-hidden');
-            $('#viewSignup').classList.add('is-hidden');
-        });
-        $('#modalClose').addEventListener('click', closeModal);
-        $('#modal').addEventListener('click', (e) => { if (e.target.id === 'modal') closeModal(); });
-        document.addEventListener('keydown', (e) => {
-            if (e.key === 'Escape') { closeModal(); $('#notifPanel').hidden = true; }
-        });
-        window.addEventListener('hashchange', () => { if (S) route(); });
-
-        if (isSso || (S && S.user)) enterApp();
+    bindAuth();
+    S = load();
+    const isSso = location.search.includes('sso=1') || localStorage.getItem('grambandhan_farmer_sso') === 'true';
+    if (!S || !S.projects || !S.projects.length || !S.wallet || !S.notifications) {
+      S = seed({
+        name: (S && S.user && S.user.name) || 'Md. Rafiqul Islam',
+        phone: (S && S.user && S.user.phone) || '01712345678',
+        email: (S && S.user && S.user.email) || '',
+        role: 'Farmer',
+        district: (S && S.user && S.user.district) || 'Bogura',
+        upazila: (S && S.user && S.user.upazila) || 'Shibganj',
+        land: 210, exp: 14, crops: ['Rice', 'Vegetables', 'Poultry'],
+        nid: '19XXXXXXXXXXXX', verified: true, completed: 2, rating: 4.8, joined: '2024-11-02'
+      });
+      save();
     }
 
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', boot);
-    } else {
-        boot();
-    }
+    $('#menuBtn').addEventListener('click', () => $('#rail').classList.toggle('is-open'));
+    $('#bellBtn').addEventListener('click', () => { $('#notifPanel').hidden = !$('#notifPanel').hidden; });
+    $('#notifClose').addEventListener('click', () => { $('#notifPanel').hidden = true; });
+    $('#notifClear').addEventListener('click', () => {
+      if (S && S.notifications) {
+        S.notifications.forEach((n) => { n.read = true; });
+        save(); paintBell(); toast('All caught up.');
+      }
+    });
+    $('#logoutBtn').addEventListener('click', () => {
+      try { localStorage.removeItem('grambandhan_farmer_sso'); } catch (e) { }
+      $('#app').classList.add('is-hidden');
+      $('#authScreen').classList.remove('is-hidden');
+      $('#viewLogin').classList.remove('is-hidden');
+      $('#viewSignup').classList.add('is-hidden');
+    });
+    $('#modalClose').addEventListener('click', closeModal);
+    $('#modal').addEventListener('click', (e) => { if (e.target.id === 'modal') closeModal(); });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') { closeModal(); $('#notifPanel').hidden = true; }
+    });
+    window.addEventListener('hashchange', () => { if (S) route(); });
+
+    if (isSso || (S && S.user)) enterApp();
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', boot);
+  } else {
+    boot();
+  }
 })();
