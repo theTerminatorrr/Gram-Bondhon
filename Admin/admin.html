@@ -6,18 +6,18 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Grambondhon — Admin Console</title>
   <meta name="description"
-    content="Admin module of Grambondhon: project approvals, user verification, financial oversight, fraud monitoring and reporting.">
+    content="Admin module of Grambandhan: project approvals, user verification, financial oversight, fraud monitoring and reporting.">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link
     href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,600;12..96,700&family=Hind+Siliguri:wght@400;500;600;700&display=swap"
     rel="stylesheet">
   <link rel="stylesheet" href="admin.css">
+
 </head>
 
 <body>
 
-  <!-- ============ ADMIN SIGN IN ============ -->
   <div id="authScreen" class="auth auth--admin">
     <aside class="auth__brand">
       <div class="brand">
@@ -72,7 +72,6 @@
     </main>
   </div>
 
-  <!-- ============ CONSOLE ============ -->
   <div id="app" class="app is-hidden">
     <a class="skip" href="#main">Skip to content</a>
 
@@ -103,7 +102,6 @@
       </nav>
       <button class="rail__out" id="logoutBtn">Sign out</button>
     </aside>
-    <div class="railbackdrop" id="railBackdrop"></div>
 
     <header class="topbar">
       <button class="icobtn" id="menuBtn" aria-label="Open menu">☰</button>
@@ -138,9 +136,10 @@
       <div class="modal__body" id="modalBody"></div>
     </div>
   </div>
-
   <div class="toasts" id="toasts" aria-live="polite"></div>
-  <script src="admin.js"></script>
+
+  <script src="admin.js" defer></script>
+
 </body>
 
 </html>
