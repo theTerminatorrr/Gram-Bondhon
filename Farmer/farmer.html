@@ -4,7 +4,7 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Grambondhon — Farmer Portal</title>
+    <title>Grambandhan — Farmer Portal</title>
     <meta name="description"
         content="Farmer module of Grambandhan, a smart rural investment platform: project listing, funding, progress tracking, marketplace and payments.">
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -13,10 +13,10 @@
         href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,600;12..96,700&family=Hind+Siliguri:wght@400;500;600;700&display=swap"
         rel="stylesheet">
     <link rel="stylesheet" href="farmer.css">
-
 </head>
 
 <body>
+
     <div id="authScreen" class="auth">
         <aside class="auth__brand">
             <div class="brand">
@@ -32,8 +32,7 @@
             </div>
             <h1 class="auth__headline">Your field is worth<br>investing in.</h1>
             <p class="auth__sub">List a project, get funded by verified investors, show your progress, and sell straight
-                to
-                buyers — no middleman, no interest.</p>
+                to buyers — no middleman, no interest.</p>
             <dl class="auth__stats">
                 <div>
                     <dt>Farmers funded</dt>
@@ -73,8 +72,7 @@
                 <p class="auth__switch">New here? <button class="link" data-goauth="signup">Create a farmer
                         account</button></p>
                 <p class="hint">Demo build — any 11-digit number and a 4+ character password signs you in as the sample
-                    farmer.
-                </p>
+                    farmer.</p>
             </section>
 
             <!-- Registration wizard -->
@@ -106,8 +104,8 @@
                                 <label class="role is-selected"><input type="radio" name="role" value="Farmer"
                                         checked><b>Farmer</b><i>কৃষক — crops, poultry, fish, cattle</i></label>
                                 <label class="role"><input type="radio" name="role"
-                                        value="Artisan"><b>Artisan</b><i>কারুশিল্পী —
-                                        handicraft &amp; small business</i></label>
+                                        value="Artisan"><b>Artisan</b><i>কারুশিল্পী — handicraft &amp; small
+                                        business</i></label>
                             </div>
                         </div>
                     </fieldset>
@@ -147,8 +145,7 @@
                     <fieldset class="regstep" data-step="3">
                         <legend class="h2">Verify your identity</legend>
                         <p class="muted">Investors only fund verified farmers. Your NID is checked against the national
-                            database and
-                            never shown publicly.</p>
+                            database and never shown publicly.</p>
                         <label class="field"><span class="field__label">NID number <em>জাতীয় পরিচয়পত্র
                                     নম্বর</em></span>
                             <input id="regNid" inputmode="numeric" placeholder="10, 13 or 17 digits" required>
@@ -180,6 +177,9 @@
         </main>
     </div>
 
+    <!-- ============================================================
+     APP SHELL
+     ============================================================ -->
     <div id="app" class="app is-hidden">
         <a class="skip" href="#main">Skip to content</a>
 
@@ -206,6 +206,7 @@
             </nav>
             <button class="rail__out" id="logoutBtn">Sign out</button>
         </aside>
+        <div class="railbackdrop" id="railBackdrop"></div>
 
         <header class="topbar">
             <button class="icobtn" id="menuBtn" aria-label="Open menu">☰</button>
@@ -245,7 +246,6 @@
     <div class="toasts" id="toasts" aria-live="polite"></div>
 
     <script src="farmer.js"></script>
-
 </body>
 
 </html>
